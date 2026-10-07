@@ -1,0 +1,36 @@
+# Copy into any Flutter repo you want to build from the app.
+name: android-build
+run-name: build ${{ inputs.correlation_id }}   # <- BuildPoller finds its run by this
+
+on:
+  workflow_dispatch:
+    inputs:
+      correlation_id:
+        description: "Set by the mobile app"
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - run: flutter pub get
+      - run: flutter build apk --release
+        # For a properly signed release, decode a keystore from secrets and
+        # configure android/key.properties before this step.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 14
+      - name: Source bundle
+        run: git archive --format=zip -o source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-zip
+          path: source.zip
+          retention-days: 14

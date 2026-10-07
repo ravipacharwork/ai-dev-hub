@@ -1,0 +1,45 @@
+name: Flutter Analyze
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Pub get
+        run: flutter pub get
+
+      - name: Flutter analyze
+        id: analyze
+        run: |
+          set +e
+          flutter analyze > analyze_output.txt 2>&1
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          cat analyze_output.txt
+
+      - name: Job summary
+        if: always()
+        run: cat analyze_output.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analyze-output
+          path: analyze_output.txt
+
+      - name: Fail if analysis failed
+        if: steps.analyze.outputs.exit_code != '0'
+        run: exit 1

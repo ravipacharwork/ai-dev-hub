@@ -1,0 +1,40 @@
+name: ai_dev_hub
+description: Router-driven AI client with GitHub integration and remote builds.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+  flutter: ">=3.22.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.5.1
+  dio: ^5.4.3
+  shelf: ^1.4.1
+  flutter_secure_storage: ^9.2.2   # EncryptedSharedPreferences on Android, Keychain on iOS
+  shared_preferences: ^2.2.3
+  saf_util: ^0.11.0                # verify API against installed version
+  saf_stream: ^0.11.0
+  archive: ^3.6.1
+  open_filex: ^4.5.0               # launch APK installer
+  path_provider: ^2.1.3
+  path: ^1.9.0
+  permission_handler: ^11.3.1      # All-files-access prompt for device file tools
+  flutter_markdown: ^0.7.1
+  markdown: ^7.2.2
+  flutter_highlight: ^0.7.0
+  flutter_foreground_task: ^8.10.0 # keep proxy alive on Android
+  url_launcher: ^6.3.0
+  file_picker: ^8.0.6
+  share_plus: ^9.0.0
+  webview_flutter: ^4.9.0          # run HTML apps inline in chat
+  font_awesome_flutter: ^11.0.0    # GitHub brand icon
+  speech_to_text: ^7.0.0           # microphone voice input
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/providers.json
+    - assets/android-build.yml

@@ -1,0 +1,59 @@
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate android platform files
+        run: |
+          flutter create --platforms=android --org com.example --project-name ai_dev_hub /tmp/gen
+          cp -r /tmp/gen/android ./android
+
+      - name: Patch Android manifest (permissions only)
+        run: python3 android_overlay/patch_android.py
+
+      - name: Pub get
+        run: flutter pub get
+
+      - name: Force compileSdk 36 (plugins require it)
+        run: |
+          APP_GRADLE=$(ls android/app/build.gradle android/app/build.gradle.kts 2>/dev/null | head -1)
+          sed -i -E 's/compileSdk(Version)?[[:space:]]*=?[[:space:]]*(flutter\.compileSdkVersion|[0-9]+)/compileSdk = 36/' "$APP_GRADLE"
+          find "$HOME/.pub-cache/hosted" \( -name build.gradle -o -name build.gradle.kts \) -path "*/android/*" \
+            -exec sed -i -E 's/(compileSdk(Version)?[[:space:]]*=?[[:space:]]*)[0-9]+/\1 36/g' {} +
+          echo "app:"; grep -n "compileSdk" "$APP_GRADLE" || true
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Details
+        run: |
+          {
+            echo "## APK built"
+            echo '```'
+            ls -lh build/app/outputs/flutter-apk/
+            sha256sum build/app/outputs/flutter-apk/app-release.apk
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai_dev_hub-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
