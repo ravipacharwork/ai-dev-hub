@@ -15,11 +15,7 @@ perms = [
     "android.permission.POST_NOTIFICATIONS",
     "android.permission.WAKE_LOCK",
     "android.permission.RECORD_AUDIO",
-    "android.permission.RECEIVE_BOOT_COMPLETED",
-    "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
     "android.permission.REQUEST_INSTALL_PACKAGES",
-    "android.permission.MANAGE_EXTERNAL_STORAGE",
-    "android.permission.READ_EXTERNAL_STORAGE",
 ]
 add = "".join(f'    <uses-permission android:name="{x}"/>\n' for x in perms if x not in s)
 s = s.replace("<application", add + "    <application", 1)

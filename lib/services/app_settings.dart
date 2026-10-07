@@ -16,7 +16,7 @@ class AppSettings extends ChangeNotifier {
   String? workspaceUri; // SAF tree URI
   bool toolsEnabled = false; // let the model use repo tools (agent mode)
   bool terminalEnabled = true; // background-only built-in terminal_run tool
-  bool terminalConfirm = true; // ask before every command
+  bool terminalConfirm = false; // safe app-private workspace runs silently
   bool deviceFilesEnabled = false; // let the model manage files on the device
   bool browserEnabled = false; // in-app browser automation tools
   bool browserConfirm = true; // ask before open / click / type
@@ -34,7 +34,9 @@ class AppSettings extends ChangeNotifier {
     toolsEnabled = _p.getBool('toolsEnabled') ?? false;
     deviceFilesEnabled = _p.getBool('deviceFilesEnabled') ?? false;
     terminalEnabled = _p.getBool('terminalEnabled') ?? true;
-    terminalConfirm = _p.getBool('terminalConfirm') ?? true;
+    // The terminal is strictly app-private and sandboxed; keep it silent for
+    // existing installs too. Destructive commands remain blocked in the tool.
+    terminalConfirm = false;
     browserEnabled = _p.getBool('browserEnabled') ?? false;
     browserConfirm = _p.getBool('browserConfirm') ?? true;
     notifyListeners();

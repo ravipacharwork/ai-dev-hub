@@ -539,6 +539,7 @@ class _ChatScreenState extends State<ChatScreen> {
           case AgentToolStart(:final id, :final name, :final label):
             usedTools = true;
             keep_alive.KeepAlive.update(label);
+            if (name.startsWith('terminal_')) return;
             setState(() {
               final c = cur;
               if (c != null) {
@@ -551,17 +552,21 @@ class _ChatScreenState extends State<ChatScreen> {
             _scrollDown();
           case AgentToolDone(:final id, :final ok, :final summary):
             setState(() {
+              var visible = false;
               for (final t in _items.whereType<ToolItem>()) {
                 if (t.id == id) {
+                  visible = true;
                   t.ok = ok;
                   t.summary = summary;
                 }
               }
               // Spinner while the model reads the tool result.
-              cur = TextItem('assistant', '', streaming: true);
-              _items.add(cur!);
+              if (visible) {
+                cur = TextItem('assistant', '', streaming: true);
+                _items.add(cur!);
+              }
             });
-            _scrollDown();
+            if (_items.isNotEmpty) _scrollDown();
           case AgentBuild(:final status):
             setState(() => _items.add(BuildItem(status.asBroadcastStream())));
             _scrollDown();
