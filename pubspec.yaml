@@ -28,7 +28,7 @@ dependencies:
   flutter_foreground_task: ^8.10.0 # keep proxy alive on Android
   url_launcher: ^6.3.0
   file_picker: ^8.0.6
-  share_plus: ^9.0.0
+  share_plus: ^12.0.2
   webview_flutter: ^4.9.0          # run HTML apps inline in chat
   font_awesome_flutter: ^11.0.0    # GitHub brand icon
   speech_to_text: ^7.0.0           # microphone voice input
