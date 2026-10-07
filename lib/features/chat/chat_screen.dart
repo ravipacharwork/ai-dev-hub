@@ -1043,7 +1043,24 @@ class _Bubble extends StatelessWidget {
                   ),
               ]);
 
+    final assistantContent = isUser
+        ? content
+        : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(
+              width: 28,
+              height: 28,
+              margin: const EdgeInsets.only(top: 2, right: 10),
+              decoration: BoxDecoration(
+                color: cs.primaryContainer,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(Icons.auto_awesome_rounded, size: 16, color: cs.onPrimaryContainer),
+            ),
+            Expanded(child: content),
+          ]);
+
     return Align(
+      // Chat bubble alignment is intentionally stable while streaming.
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: maxW),
@@ -1052,10 +1069,8 @@ class _Bubble extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                     color: cs.primary, borderRadius: BorderRadius.circular(20)),
-                child: content)
-            // Assistant replies sit flat on the page (no bubble), full width,
-            // so text, steps and file cards read as one continuous thread.
-            : Padding(padding: const EdgeInsets.symmetric(horizontal: 2), child: content),
+                child: assistantContent)
+            : Padding(padding: const EdgeInsets.symmetric(horizontal: 2), child: assistantContent),
       ),
     );
   }
@@ -1125,6 +1140,7 @@ class _Composer extends StatelessWidget {
                       hintStyle: TextStyle(color: cs.onSurfaceVariant),
                       border: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(vertical: 12)),
+                  onSubmitted: (_) { if (!busy) onSend(); },
                 ),
               ),
               IconButton(
