@@ -251,8 +251,11 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     final n = widget.contextMessages;
     final recent = msgs.length > n ? msgs.sublist(msgs.length - n) : msgs;
+    final modeInstruction = _mode == ChatMode.plan
+        ? '\n\nPLAN MODE: Produce a clear implementation plan, assumptions, file-level changes, risks, and verification steps. Do not call tools, edit files, access repositories, or run commands.'
+        : '';
     return [
-      {'role': 'system', 'content': '${widget.systemPrompt}${widget.skills.promptAddendum}'},
+      {'role': 'system', 'content': '${widget.systemPrompt}${widget.skills.promptAddendum}$modeInstruction'},
       ...recent,
     ];
   }

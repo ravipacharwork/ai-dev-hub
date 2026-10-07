@@ -3,6 +3,9 @@ enum ChatMode {
   /// Plain conversation. No tools are used, nothing touches files, repos or the terminal.
   chat('Chat', 'Just talk. No tools.'),
 
+  /// Planning-only mode. The model proposes steps without executing tools.
+  plan('Plan', 'Create a step-by-step plan. Do not edit files or run tools.'),
+
   /// Multi-step work with tools (repo, device files, terminal), up to 25 rounds.
   /// Keeps running if you leave the app. Risky actions still ask first.
   build('Build', 'Works through a task step by step with tools (up to 25 rounds).'),
