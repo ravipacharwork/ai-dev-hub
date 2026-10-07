@@ -187,14 +187,34 @@ class TerminalBridge {
     } else { await File(to.path).parent.create(recursive: true); await File(from.path).copy(to.path); }
   }
 
+  Future<FileSystemEntity> _copyTarget(FileSystemEntity from, String requested) async {
+    final dest = _resolve(requested);
+    if (await dest.exists() && dest is Directory) {
+      final child = p.join(dest.path, p.basename(from.path));
+      return from is Directory ? Directory(child) : File(child);
+    }
+    return dest;
+  }
+
+  bool _inside(String parent, String child) {
+    final a = p.normalize(parent);
+    final b = p.normalize(child);
+    return b == a || b.startsWith('$a${p.separator}');
+  }
+
   Future<CmdResult> _copy(List<String> a) async {
     if (a.length < 2) return CmdResult('', 'cp: source and destination required', 1, false, null);
-    await _copyEntity(_resolve(a.first), _resolve(a.last)); return _ok('');
+    final from = _resolve(a.first);
+    final to = await _copyTarget(from, a.last);
+    if (from is Directory && _inside(from.path, to.path)) return CmdResult('', 'cp: refusing to copy a directory into itself', 1, false, null);
+    await _copyEntity(from, to); return _ok('');
   }
 
   Future<CmdResult> _move(List<String> a) async {
     if (a.length < 2) return CmdResult('', 'mv: source and destination required', 1, false, null);
-    final from = _resolve(a.first); final to = _resolve(a.last); await _copyEntity(from, to); await from.delete(recursive: from is Directory); return _ok('');
+    final from = _resolve(a.first); final to = await _copyTarget(from, a.last);
+    if (_inside(from.path, to.path)) return CmdResult('', 'mv: refusing to move an item into itself', 1, false, null);
+    await _copyEntity(from, to); await from.delete(recursive: from is Directory); return _ok('');
   }
 
   Future<CmdResult> _find(List<String> a) async {
