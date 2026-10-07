@@ -149,6 +149,7 @@ class AppServices {
       store: a.store,
       stats: a.router.stats,
       upstream: () => a.upstream,
+      settings: a.settings,
       onChanged: () async {
         await a.rebuildChain();
         unawaited(a.refreshGatewayModels(force: true));

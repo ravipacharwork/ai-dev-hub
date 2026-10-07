@@ -20,6 +20,8 @@ class AppSettings extends ChangeNotifier {
   bool deviceFilesEnabled = false; // let the model manage files on the device
   bool browserEnabled = false; // in-app browser automation tools
   bool browserConfirm = true; // ask before open / click / type
+  bool powerMode = false; // unlocks advanced, user-approved workflows
+  String routingProfile = 'auto'; // auto, fast, cheap, coding
 
   late SharedPreferences _p;
 
@@ -39,6 +41,8 @@ class AppSettings extends ChangeNotifier {
     terminalConfirm = false;
     browserEnabled = _p.getBool('browserEnabled') ?? false;
     browserConfirm = _p.getBool('browserConfirm') ?? true;
+    powerMode = _p.getBool('powerMode') ?? false;
+    routingProfile = _p.getString('routingProfile') ?? 'auto';
     notifyListeners();
   }
 
@@ -53,6 +57,8 @@ class AppSettings extends ChangeNotifier {
   void setBrowserEnabled(bool v) { browserEnabled = v; _p.setBool('browserEnabled', v); _done(); }
   void setBrowserConfirm(bool v) { browserConfirm = v; _p.setBool('browserConfirm', v); _done(); }
   void setTerminalConfirm(bool v) { terminalConfirm = v; _p.setBool('terminalConfirm', v); _done(); }
+  void setPowerMode(bool v) { powerMode = v; _p.setBool('powerMode', v); _done(); }
+  void setRoutingProfile(String v) { routingProfile = v; _p.setString('routingProfile', v); _done(); }
   void setWorkspace(String? uri) {
     workspaceUri = uri;
     uri == null ? _p.remove('workspaceUri') : _p.setString('workspaceUri', uri);

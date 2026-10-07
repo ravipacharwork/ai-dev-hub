@@ -207,6 +207,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
           ),
         ]),
+        _section('Power mode', [
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            secondary: const Icon(Icons.bolt_rounded),
+            title: const Text('Enable Power Mode'),
+            subtitle: const Text('Unlock advanced agent workflows while keeping Android system access restricted.'),
+            value: s.powerMode,
+            onChanged: (v) { Haptics.toggle(); s.setPowerMode(v); setState(() {}); },
+          ),
+          DropdownButtonFormField<String>(
+            value: s.routingProfile,
+            decoration: const InputDecoration(labelText: 'Routing profile'),
+            items: const [
+              DropdownMenuItem(value: 'auto', child: Text('Auto · best available')),
+              DropdownMenuItem(value: 'fast', child: Text('Fast · lowest latency')),
+              DropdownMenuItem(value: 'cheap', child: Text('Cheap · free-tier priority')),
+              DropdownMenuItem(value: 'coding', child: Text('Coding · code-focused models')),
+            ],
+            onChanged: (v) { if (v != null) { s.setRoutingProfile(v); setState(() {}); } },
+          ),
+          const SizedBox(height: 4),
+          Text('Power Mode never grants root, ADB, hidden app access or silent installs.', style: Theme.of(context).textTheme.bodySmall),
+        ]),
         _section('Chats', [
           Wrap(spacing: 8, runSpacing: 8, children: [
             FilledButton.tonal(onPressed: () => _export(false), child: const Text('Export JSON')),

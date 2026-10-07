@@ -8,6 +8,7 @@ import 'openai_compatible_client.dart';
 import 'proxy_server.dart';
 import 'router_service.dart';
 import 'secure_store.dart';
+import 'app_settings.dart';
 
 enum GatewayKind { omniRoute }
 
@@ -28,14 +29,22 @@ abstract class GatewayPolicy {
 /// (Hard failures are additionally circuit-broken by RouterService cooldowns.)
 class OmniRoutePolicy extends GatewayPolicy {
   final Map<String, ProviderStats> stats;
-  OmniRoutePolicy(this.stats);
+  final AppSettings settings;
+  OmniRoutePolicy(this.stats, this.settings);
 
   double _score(Endpoint e) {
     final s = stats[e.providerId];
     if (s == null || s.requests + s.errors == 0) return 0.5; // untested
     final errRate = s.errors / (s.requests + s.errors);
     if (errRate > 0.5) return 1 + errRate; // flaky
-    return s.lastLatencyMs / 1e6; // proven: fastest first
+    final base = s.lastLatencyMs / 1e6; // proven: fastest first
+    final p = settings.routingProfile;
+    final preferred = p == 'cheap'
+        ? const {'groq', 'gemini', 'openrouter', 'pollinations', 'nvidia'}
+        : p == 'coding'
+            ? const {'cerebras', 'groq', 'deepinfra', 'together', 'openrouter'}
+            : const <String>{};
+    return base + (preferred.contains(e.providerId) ? -0.35 : 0);
   }
 
   @override
@@ -58,6 +67,7 @@ class LocalGateways extends ChangeNotifier {
   final Map<String, ProviderStats> stats;
   final List<Endpoint> Function() upstream; // real providers (keys resolved)
   final Future<void> Function() onChanged; // app rebuilds its chain
+  final AppSettings settings;
 
   LocalGateways({
     required this.client,
@@ -65,6 +75,7 @@ class LocalGateways extends ChangeNotifier {
     required this.stats,
     required this.upstream,
     required this.onChanged,
+    required this.settings,
   });
 
   GatewayKind kind = GatewayKind.omniRoute;
@@ -92,7 +103,7 @@ class LocalGateways extends ChangeNotifier {
 
   Future<void> _start() async {
     final k = kind;
-    final policy = OmniRoutePolicy(stats) as GatewayPolicy;
+    final policy = OmniRoutePolicy(stats, settings) as GatewayPolicy;
     final router = RouterService(
       client: client,
       chain: upstream,
