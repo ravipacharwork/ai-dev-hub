@@ -27,7 +27,6 @@ import 'services/agent/agent_tools.dart';
 import 'services/agent/device_file_tools.dart';
 import 'services/agent/terminal_tools.dart';
 import 'services/terminal/terminal_bridge.dart';
-import 'features/settings/terminal_screen.dart';
 import 'services/app_settings.dart';
 import 'services/build_poller.dart';
 import 'services/chat_codec.dart';
@@ -399,7 +398,6 @@ class _HomeShellState extends State<HomeShell> {
         onChanged: app.rebuildChain,
       ));
 
-  void _openTerminal() => _push(TerminalScreen(settings: app.settings, bridge: app.terminalBridge));
 
   void _openProxy() => _push(ProxyScreen(controller: app.proxy));
 
@@ -412,7 +410,6 @@ class _HomeShellState extends State<HomeShell> {
         },
         onOpenProviders: _openProviders,
         onOpenProxy: _openProxy,
-        onOpenTerminal: _openTerminal,
         gateways: app.gateways,
       ));
 

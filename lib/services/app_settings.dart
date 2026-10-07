@@ -15,7 +15,7 @@ class AppSettings extends ChangeNotifier {
   static const int contextMessages = 30; // recent messages sent as context
   String? workspaceUri; // SAF tree URI
   bool toolsEnabled = false; // let the model use repo tools (agent mode)
-  bool terminalEnabled = false; // built-in terminal_run tool
+  bool terminalEnabled = true; // background-only built-in terminal_run tool
   bool terminalConfirm = true; // ask before every command
   bool deviceFilesEnabled = false; // let the model manage files on the device
   bool browserEnabled = false; // in-app browser automation tools
@@ -33,7 +33,7 @@ class AppSettings extends ChangeNotifier {
     workspaceUri = _p.getString('workspaceUri');
     toolsEnabled = _p.getBool('toolsEnabled') ?? false;
     deviceFilesEnabled = _p.getBool('deviceFilesEnabled') ?? false;
-    terminalEnabled = _p.getBool('terminalEnabled') ?? false;
+    terminalEnabled = _p.getBool('terminalEnabled') ?? true;
     terminalConfirm = _p.getBool('terminalConfirm') ?? true;
     browserEnabled = _p.getBool('browserEnabled') ?? false;
     browserConfirm = _p.getBool('browserConfirm') ?? true;

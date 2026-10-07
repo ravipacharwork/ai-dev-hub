@@ -18,7 +18,6 @@ class SettingsScreen extends StatefulWidget {
   final Future<void> Function(List<ChatSession>) importSessions;
   final VoidCallback? onOpenProviders;
   final VoidCallback? onOpenProxy;
-  final VoidCallback? onOpenTerminal;
   final LocalGateways? gateways;
   const SettingsScreen({
     super.key,
@@ -27,7 +26,6 @@ class SettingsScreen extends StatefulWidget {
     required this.importSessions,
     this.onOpenProviders,
     this.onOpenProxy,
-    this.onOpenTerminal,
     this.gateways,
   });
 
@@ -232,14 +230,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: const Text('Share the router with other apps on this device.'),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: widget.onOpenProxy,
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.terminal_rounded),
-            title: const Text('Built-in Terminal'),
-            subtitle: const Text('Let the model run commands. Sandboxed app-private workspace.'),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: widget.onOpenTerminal,
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,

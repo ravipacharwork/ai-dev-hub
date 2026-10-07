@@ -17,16 +17,16 @@ class ProvidersScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Provider keys')),
+        appBar: AppBar(title: const Text('OmniRoute Control Panel')),
         body: ListView(padding: const EdgeInsets.all(12), children: [
           Glass(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Icon(Icons.hub_rounded, color: Theme.of(context).colorScheme.primary),
             const SizedBox(height: 8),
-            const Text('OmniRoute is the built-in gateway. It can route across multiple keys for the same provider, with independent fallback and rate-limit cooldowns.'),
+            const Text('OmniRoute is your routing brain. All providers and key pools are managed here, with health-aware fallback and independent rate-limit cooldowns.'),
             const SizedBox(height: 12),
             FilledButton.icon(
               icon: const Icon(Icons.dashboard_customize_rounded),
-              label: const Text('Open OmniRoute key panel'),
+              label: const Text('Manage OmniRoute key pools'),
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OmniRouteKeysScreen(providers: providers, store: store, onChanged: onChanged))),
             ),
           ])),
