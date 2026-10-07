@@ -34,7 +34,7 @@ class ProvidersScreen extends StatelessWidget {
           for (final p in providers)
             Padding(padding: const EdgeInsets.only(bottom: 12), child: _ProviderTile(def: p, store: store, client: client, stats: () => stats()[p.id])),
         ],
-      );
+      ));
 }
 
 class OmniRouteKeysScreen extends StatefulWidget {

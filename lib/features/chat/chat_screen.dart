@@ -18,7 +18,7 @@ import '../../services/build_poller.dart';
 import '../../services/chat_codec.dart';
 import '../../services/default_providers.dart';
 import '../../services/deliverables.dart';
-import '../../services/keep_alive.dart';
+import '../../services/keep_alive.dart' as keep_alive;
 import '../../services/model_health.dart';
 import '../../services/router_service.dart';
 import '../../services/skill_store.dart';
@@ -145,10 +145,10 @@ class _ChatScreenState extends State<ChatScreen> {
   void _keepAlive(bool on, [String text = 'Working...']) {
     if (on && !_kaHeld) {
       _kaHeld = true;
-      KeepAlive.acquire(text);
+      keep_alive.KeepAlive.acquire(text);
     } else if (!on && _kaHeld) {
       _kaHeld = false;
-      KeepAlive.release();
+      keep_alive.KeepAlive.release();
     }
   }
   final _pending = <Attachment>[];
@@ -467,7 +467,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<bool> _approve(ApprovalRequest r) async {
     if (!mounted) return false;
     Haptics.toggle();
-    KeepAlive.update('Waiting for your approval: ${r.title}');
+    keep_alive.KeepAlive.update('Waiting for your approval: ${r.title}');
     final ok = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -535,7 +535,7 @@ class _ChatScreenState extends State<ChatScreen> {
             _scrollDown();
           case AgentToolStart(:final id, :final name, :final label):
             usedTools = true;
-            KeepAlive.update(label);
+            keep_alive.KeepAlive.update(label);
             setState(() {
               final c = cur;
               if (c != null) {
