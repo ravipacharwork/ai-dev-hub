@@ -156,6 +156,15 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  void _flushDelta(TextItem? reply) {
+    _flushTimer?.cancel();
+    _flushTimer = null;
+    if (reply != null && _deltaBuffer.isNotEmpty) {
+      reply.text += _deltaBuffer;
+      _deltaBuffer = '';
+    }
+  }
+
   void _keepAlive(bool on, [String text = 'Working...']) {
     if (on && !_kaHeld) {
       _kaHeld = true;
@@ -548,18 +557,18 @@ class _ChatScreenState extends State<ChatScreen> {
       (e) {
         switch (e) {
           case AgentText(:final delta):
-            setState(() {
-              if (cur == null) {
+            if (cur == null) {
+              setState(() {
                 cur = TextItem('assistant', '', streaming: true);
                 _items.add(cur!);
-              }
-              cur!.text += delta;
-            });
-            _scrollDown();
+              });
+            }
+            _queueDelta(cur!, delta);
           case AgentToolStart(:final id, :final name, :final label):
             usedTools = true;
             keep_alive.KeepAlive.update(label);
             if (name.startsWith('terminal_')) return;
+            _flushDelta(cur);
             setState(() {
               final c = cur;
               if (c != null) {
@@ -599,6 +608,7 @@ class _ChatScreenState extends State<ChatScreen> {
             Haptics.copy();
             _scrollDown();
           case AgentNotice(:final text):
+            _flushDelta(cur);
             setState(() {
               final c = cur;
               if (c != null && c.text.isEmpty) _items.remove(c);
@@ -610,6 +620,7 @@ class _ChatScreenState extends State<ChatScreen> {
       },
       onError: (Object err) {
         Haptics.error();
+        _flushDelta(cur);
         setState(() {
           if (cur == null) {
             cur = TextItem('assistant', '');
@@ -621,6 +632,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _notify();
       },
       onDone: () {
+        _flushDelta(cur);
         setState(finish);
         _notify();
       },
