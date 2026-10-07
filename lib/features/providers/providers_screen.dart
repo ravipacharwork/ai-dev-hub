@@ -27,7 +27,7 @@ class ProvidersScreen extends StatelessWidget {
             FilledButton.icon(
               icon: const Icon(Icons.dashboard_customize_rounded),
               label: const Text('Manage OmniRoute key pools'),
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OmniRouteKeysScreen(providers: providers, store: store, onChanged: onChanged))),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OmniRouteKeysScreen(providers: providers, store: store, client: client, onChanged: onChanged))),
             ),
           ])),
           const SizedBox(height: 12),
@@ -40,8 +40,9 @@ class ProvidersScreen extends StatelessWidget {
 class OmniRouteKeysScreen extends StatefulWidget {
   final List<ProviderDef> providers;
   final SecureStore store;
+  final OpenAICompatibleClient client;
   final Future<void> Function()? onChanged;
-  const OmniRouteKeysScreen({super.key, required this.providers, required this.store, this.onChanged});
+  const OmniRouteKeysScreen({super.key, required this.providers, required this.store, required this.client, this.onChanged});
   @override State<OmniRouteKeysScreen> createState() => _OmniRouteKeysScreenState();
 }
 
@@ -50,6 +51,8 @@ class _OmniRouteKeysScreenState extends State<OmniRouteKeysScreen> {
   final _keys = <String>[];
   String? _providerId;
   bool _ready = false;
+  bool _testing = false;
+  final _health = <String, String>{};
 
   @override
   void initState() {
@@ -59,7 +62,23 @@ class _OmniRouteKeysScreenState extends State<OmniRouteKeysScreen> {
   @override void dispose() { _input.dispose(); super.dispose(); }
   Future<void> _loadKeys() async { _keys..clear()..addAll(_providerId == null ? const [] : await widget.store.apiKeys(_providerId!)); }
   Future<void> _save() async { if (_providerId != null) { await widget.store.setApiKeys(_providerId!, _keys); await widget.onChanged?.call(); } }
-  Future<void> _changeProvider(String? id) async { if (id == null || id == _providerId) return; setState(() { _providerId = id; _ready = false; }); await _loadKeys(); if (mounted) setState(() => _ready = true); }
+  Future<void> _changeProvider(String? id) async { if (id == null || id == _providerId) return; setState(() { _providerId = id; _ready = false; _health.clear(); }); await _loadKeys(); if (mounted) setState(() => _ready = true); }
+  Future<void> _testAll() async {
+    final matches = widget.providers.where((p) => p.id == _providerId).toList();
+    final def = matches.isEmpty ? null : matches.first;
+    if (def == null || _keys.isEmpty || _testing) return;
+    setState(() { _testing = true; _health.clear(); });
+    for (var i = 0; i < _keys.length; i++) {
+      final key = _keys[i];
+      try {
+        final sw = Stopwatch()..start();
+        await widget.client.listModels(Endpoint(providerId: def.id, baseUrl: def.baseUrl, apiKey: key, model: def.models.first));
+        _health[key] = 'Online · ${sw.elapsedMilliseconds} ms';
+      } catch (e) { _health[key] = 'Unavailable'; }
+      if (mounted) setState(() {});
+    }
+    if (mounted) setState(() => _testing = false);
+  }
   Future<void> _add() async {
     final value = _input.text.trim();
     if (value.isEmpty || _keys.contains(value)) return;
@@ -82,12 +101,18 @@ class _OmniRouteKeysScreenState extends State<OmniRouteKeysScreen> {
               decoration: InputDecoration(labelText: 'Add API key', suffixIcon: IconButton(icon: const Icon(Icons.add_rounded), onPressed: _add)),
               onSubmitted: (_) => _add()),
             const SizedBox(height: 12),
+            Row(children: [
+              FilledButton.tonalIcon(icon: _testing ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.health_and_safety_outlined), label: Text(_testing ? 'Testing…' : 'Test all keys'), onPressed: _testing || _keys.isEmpty ? null : _testAll),
+              const SizedBox(width: 10),
+              Text('${_keys.length} key${_keys.length == 1 ? '' : 's'} · no limit', style: Theme.of(context).textTheme.bodySmall),
+            ]),
+            const SizedBox(height: 8),
             if (_keys.isEmpty) const Text('No keys added yet. Add one or more provider keys above.')
             else for (var i = 0; i < _keys.length; i++) ListTile(
               contentPadding: EdgeInsets.zero,
               leading: CircleAvatar(child: Text('${i + 1}')),
               title: Text('••••••••${_keys[i].length > 6 ? _keys[i].substring(_keys[i].length - 6) : ''}'),
-              subtitle: Text('Fallback slot ${i + 1}'),
+              subtitle: Text(_health[_keys[i]] ?? 'Fallback slot ${i + 1}'),
               trailing: IconButton(icon: const Icon(Icons.delete_outline_rounded), onPressed: () async { setState(() => _keys.removeAt(i)); await _save(); }),
             ),
           ])),
