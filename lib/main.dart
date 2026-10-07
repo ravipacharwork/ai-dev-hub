@@ -251,7 +251,9 @@ class AppServices {
             baseUrl: g.baseUrl,
             apiKey: g.apiKey,
             model: m,
-            selectableOnly: true));
+            // OmniRoute is the internal gateway; users select Auto or a
+            // provider preset instead of seeing the gateway's own aliases.
+            selectableOnly: g.id != DefaultProviders.omniRouteId));
       }
     }
     chain = out;
