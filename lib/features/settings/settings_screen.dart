@@ -161,6 +161,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 8),
           _FontSizeSlider(value: s.fontScale, onEnd: s.setFontScale),
         ]),
+        _section('Permissions', [
+          FutureBuilder<PermissionStatus>(
+            future: Permission.manageExternalStorage.status,
+            builder: (ctx, snap) {
+              final granted = snap.data?.isGranted == true;
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(granted ? Icons.check_circle_rounded : Icons.folder_open_rounded,
+                    color: granted ? Colors.green : null),
+                title: const Text('Phone files access'),
+                subtitle: Text(granted
+                    ? 'Allowed once · AI Dev Hub can work with shared storage'
+                    : 'Not allowed · grant once in Android Settings'),
+                trailing: TextButton(
+                  onPressed: () async {
+                    await openAppSettings();
+                    if (mounted) setState(() {});
+                  },
+                  child: Text(granted ? 'Manage' : 'Allow'),
+                ),
+              );
+            },
+          ),
+          Text('Android remembers this special permission until you revoke it. App-private and protected system folders remain blocked.',
+              style: Theme.of(context).textTheme.bodySmall),
+        ]),
         _section('Assistant', [
           TextField(
             controller: _prompt,
