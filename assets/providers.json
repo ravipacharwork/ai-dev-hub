@@ -1,68 +1,23 @@
 {
-  "version": 2,
+  "version": 3,
   "providers": [
-    {
-      "id": "pollinations",
-      "name": "Pollinations (free key)",
-      "baseUrl": "https://gen.pollinations.ai/v1",
-      "models": [
-        "openai"
-      ],
-      "requiresKey": true
-    },
-    {
-      "id": "openrouter",
-      "name": "OpenRouter",
-      "baseUrl": "https://openrouter.ai/api/v1",
-      "models": [
-        "openrouter/auto"
-      ],
-      "requiresKey": true
-    },
-    {
-      "id": "gemini",
-      "name": "Google Gemini",
-      "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
-      "models": [
-        "gemini-2.5-flash"
-      ],
-      "requiresKey": true
-    },
-    {
-      "id": "nvidia",
-      "name": "NVIDIA NIM",
-      "baseUrl": "https://integrate.api.nvidia.com/v1",
-      "models": [
-        "meta/llama-3.1-70b-instruct"
-      ],
-      "requiresKey": true
-    },
-    {
-      "id": "groq",
-      "name": "Groq",
-      "baseUrl": "https://api.groq.com/openai/v1",
-      "models": [
-        "llama-3.3-70b-versatile"
-      ],
-      "requiresKey": true
-    },
-    {
-      "id": "mistral",
-      "name": "Mistral AI",
-      "baseUrl": "https://api.mistral.ai/v1",
-      "models": [
-        "mistral-small-latest"
-      ],
-      "requiresKey": true
-    },
-    {
-      "id": "custom",
-      "name": "Custom (OpenAI-compatible)",
-      "baseUrl": "",
-      "models": [
-        "auto"
-      ],
-      "requiresKey": false
-    }
+    {"id":"groq","name":"Groq","baseUrl":"https://api.groq.com/openai/v1","models":["llama-3.3-70b-versatile"],"requiresKey":true,"freeTier":true},
+    {"id":"gemini","name":"Google Gemini","baseUrl":"https://generativelanguage.googleapis.com/v1beta/openai","models":["gemini-2.5-flash"],"requiresKey":true,"freeTier":true},
+    {"id":"openrouter","name":"OpenRouter","baseUrl":"https://openrouter.ai/api/v1","models":["openrouter/auto"],"requiresKey":true,"freeTier":true},
+    {"id":"mistral","name":"Mistral AI","baseUrl":"https://api.mistral.ai/v1","models":["mistral-small-latest"],"requiresKey":true,"freeTier":true},
+    {"id":"cerebras","name":"Cerebras","baseUrl":"https://api.cerebras.ai/v1","models":["llama-3.3-70b"],"requiresKey":true,"freeTier":true},
+    {"id":"sambanova","name":"SambaNova","baseUrl":"https://api.sambanova.ai/v1","models":["Meta-Llama-3.3-70B-Instruct"],"requiresKey":true,"freeTier":true},
+    {"id":"together","name":"Together AI","baseUrl":"https://api.together.xyz/v1","models":["meta-llama/Llama-3.3-70B-Instruct-Turbo"],"requiresKey":true,"freeTier":true},
+    {"id":"fireworks","name":"Fireworks AI","baseUrl":"https://api.fireworks.ai/inference/v1","models":["accounts/fireworks/models/llama-v3p1-8b-instruct"],"requiresKey":true,"freeTier":true},
+    {"id":"deepinfra","name":"DeepInfra","baseUrl":"https://api.deepinfra.com/v1/openai","models":["meta-llama/Meta-Llama-3.1-8B-Instruct"],"requiresKey":true,"freeTier":true},
+    {"id":"huggingface","name":"Hugging Face","baseUrl":"https://router.huggingface.co/v1","models":["meta-llama/Llama-3.1-8B-Instruct"],"requiresKey":true,"freeTier":true},
+    {"id":"github-models","name":"GitHub Models","baseUrl":"https://models.inference.ai.azure.com","models":["gpt-4o-mini"],"requiresKey":true,"freeTier":true},
+    {"id":"cohere","name":"Cohere","baseUrl":"https://api.cohere.ai/compatibility/v1","models":["command-r-plus"],"requiresKey":true,"freeTier":true},
+    {"id":"perplexity","name":"Perplexity","baseUrl":"https://api.perplexity.ai","models":["sonar"],"requiresKey":true,"freeTier":true},
+    {"id":"xai","name":"xAI","baseUrl":"https://api.x.ai/v1","models":["grok-3-mini"],"requiresKey":true,"freeTier":false},
+    {"id":"openai","name":"OpenAI","baseUrl":"https://api.openai.com/v1","models":["gpt-4o-mini"],"requiresKey":true,"freeTier":false},
+    {"id":"nvidia","name":"NVIDIA NIM","baseUrl":"https://integrate.api.nvidia.com/v1","models":["meta/llama-3.1-70b-instruct"],"requiresKey":true,"freeTier":true},
+    {"id":"pollinations","name":"Pollinations","baseUrl":"https://gen.pollinations.ai/v1","models":["openai"],"requiresKey":true,"freeTier":true},
+    {"id":"custom","name":"Custom OpenAI-compatible","baseUrl":"","models":["auto"],"requiresKey":false,"freeTier":false}
   ]
 }

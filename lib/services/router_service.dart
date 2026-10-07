@@ -176,13 +176,14 @@ class RouterService {
 class ProviderDef {
   final String id, name, baseUrl;
   final List<String> models;
-  final bool requiresKey;
+  final bool requiresKey, freeTier;
   ProviderDef.fromJson(Map<String, dynamic> j)
       : id = j['id'],
         name = j['name'],
         baseUrl = j['baseUrl'],
         models = List<String>.from(j['models'] ?? const []),
-        requiresKey = j['requiresKey'] ?? true;
+        requiresKey = j['requiresKey'] ?? true,
+        freeTier = j['freeTier'] == true;
 }
 
 /// Point [registryUrl] at a raw JSON file you control, e.g.

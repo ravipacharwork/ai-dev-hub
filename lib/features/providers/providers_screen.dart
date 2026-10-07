@@ -76,7 +76,7 @@ class _OmniRouteKeysScreenState extends State<OmniRouteKeysScreen> {
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(value: _providerId, decoration: const InputDecoration(labelText: 'Provider'), items: [for (final p in widget.providers) DropdownMenuItem(value: p.id, child: Text(p.name))], onChanged: _changeProvider),
             const SizedBox(height: 6),
-            const Text('Keys are stored in encrypted device storage. OmniRoute tries healthy keys independently and cools down only the key that failed.'),
+            const Text('Keys are stored in encrypted device storage. Add as many keys as you need—there is no artificial per-provider limit. OmniRoute tries healthy keys independently and cools down only the key that failed.'),
             const SizedBox(height: 14),
             TextField(controller: _input, obscureText: true, autocorrect: false, enableSuggestions: false,
               decoration: InputDecoration(labelText: 'Add API key', suffixIcon: IconButton(icon: const Icon(Icons.add_rounded), onPressed: _add)),
@@ -120,7 +120,7 @@ class _ProviderTileState extends State<_ProviderTile> {
   Widget build(BuildContext context) {
     final st = widget.stats();
     return Glass(child: !_loaded ? const SizedBox(height: 48) : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(widget.def.name, style: Theme.of(context).textTheme.titleMedium), const SizedBox(height: 8),
+      Row(children: [Expanded(child: Text(widget.def.name, style: Theme.of(context).textTheme.titleMedium)), if (widget.def.freeTier) Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.green.withOpacity(.14), borderRadius: BorderRadius.circular(99)), child: const Text('FREE TIER', style: TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.bold)))]), const SizedBox(height: 8),
       if (_isCustom) ...[TextField(controller: _base, keyboardType: TextInputType.url, autocorrect: false, decoration: const InputDecoration(labelText: 'Base URL', hintText: 'http://192.168.1.10:20128/v1')), const SizedBox(height: 8)],
       TextField(controller: _key, obscureText: !_show, autocorrect: false, enableSuggestions: false, decoration: InputDecoration(labelText: widget.def.requiresKey ? 'API key' : 'API key (optional)', suffixIcon: IconButton(icon: Icon(_show ? Icons.visibility_off_rounded : Icons.visibility_rounded), onPressed: () => setState(() => _show = !_show))), onEditingComplete: _save),
       const SizedBox(height: 10), Row(children: [FilledButton.tonal(onPressed: _testing ? null : _test, child: _testing ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Test connection')), const SizedBox(width: 10), if (_result != null) Expanded(child: Text(_ok ? '✓ $_result' : '✗ $_result', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: _ok ? Colors.green : Theme.of(context).colorScheme.error, fontSize: 12))) ]),
