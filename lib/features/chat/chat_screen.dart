@@ -137,10 +137,24 @@ class _ChatScreenState extends State<ChatScreen> {
   final _input = TextEditingController();
   final _scroll = ScrollController();
   StreamSubscription<dynamic>? _sub;
+  Timer? _flushTimer;
+  String _deltaBuffer = '';
   AgentRunner? _agent;
   String _model = 'auto';
   late ChatMode _mode = widget.toolsEnabled ? ChatMode.build : ChatMode.chat;
   bool _kaHeld = false;
+
+  void _queueDelta(TextItem reply, String delta) {
+    _deltaBuffer += delta;
+    _flushTimer ??= Timer(const Duration(milliseconds: 32), () {
+      _flushTimer = null;
+      if (!mounted || _deltaBuffer.isEmpty) return;
+      final chunk = _deltaBuffer;
+      _deltaBuffer = '';
+      setState(() => reply.text += chunk);
+      _scrollDown();
+    });
+  }
 
   void _keepAlive(bool on, [String text = 'Working...']) {
     if (on && !_kaHeld) {
@@ -210,6 +224,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _speech.cancel();
     _agent?.cancel();
     _sub?.cancel();
+    _flushTimer?.cancel();
     _input.dispose();
     _scroll.dispose();
     super.dispose();
@@ -442,8 +457,7 @@ class _ChatScreenState extends State<ChatScreen> {
       (payload) {
         final d = _delta(payload);
         if (d == null) return;
-        setState(() => reply.text += d);
-        _scrollDown();
+        _queueDelta(reply, d);
       },
       onError: (e) {
         Haptics.error();
@@ -455,6 +469,12 @@ class _ChatScreenState extends State<ChatScreen> {
         _notify();
       },
       onDone: () {
+        _flushTimer?.cancel();
+        _flushTimer = null;
+        if (_deltaBuffer.isNotEmpty) {
+          reply.text += _deltaBuffer;
+          _deltaBuffer = '';
+        }
         setState(() {
           reply.streaming = false;
           if (reply.text.isEmpty && reply.error == null) {

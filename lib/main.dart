@@ -50,8 +50,7 @@ import 'features/settings/skill_hub_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   ProxyController.initForegroundService();
-  final app = await AppServices.create();
-  runApp(HubApp(app));
+  runApp(const BootstrapApp());
 }
 
 /// Manual service locator: one place that wires everything together.
@@ -279,6 +278,68 @@ class AppServices {
     final own = {proxy.port, DefaultProviders.omniRoutePort, gateways.port};
     return loop.contains(u.host) && own.contains(port);
   }
+}
+
+class BootstrapApp extends StatefulWidget {
+  const BootstrapApp({super.key});
+
+  @override
+  State<BootstrapApp> createState() => _BootstrapAppState();
+}
+
+class _BootstrapAppState extends State<BootstrapApp> {
+  late Future<AppServices> _app;
+
+  @override
+  void initState() {
+    super.initState();
+    _app = AppServices.create();
+  }
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+        title: 'AI Dev Hub',
+        debugShowCheckedModeBanner: false,
+        theme: buildTheme(Brightness.light),
+        darkTheme: buildTheme(Brightness.dark),
+        home: FutureBuilder<AppServices>(
+          future: _app,
+          builder: (_, snap) {
+            if (snap.hasError) {
+              return _StartupView(error: '${snap.error}', onRetry: () => setState(() => _app = AppServices.create()));
+            }
+            if (!snap.hasData) return const _StartupView();
+            return HubApp(snap.data!);
+          },
+        ),
+      );
+}
+
+class _StartupView extends StatelessWidget {
+  final String? error;
+  final VoidCallback? onRetry;
+  const _StartupView({this.error, this.onRetry});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.auto_awesome_rounded, size: 46, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(height: 16),
+              Text(error == null ? 'Starting AI Dev Hub…' : 'Startup needs attention', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 12),
+              if (error == null) const LinearProgressIndicator(minHeight: 3),
+              if (error != null) ...[
+                Text(error!, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
+                const SizedBox(height: 12),
+                FilledButton(onPressed: onRetry, child: const Text('Retry')),
+              ],
+            ]),
+          ),
+        ),
+      );
 }
 
 class HubApp extends StatelessWidget {

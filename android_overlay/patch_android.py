@@ -16,6 +16,8 @@ perms = [
     "android.permission.WAKE_LOCK",
     "android.permission.RECORD_AUDIO",
     "android.permission.REQUEST_INSTALL_PACKAGES",
+    # Required only when the user explicitly enables Device file access.
+    "android.permission.MANAGE_EXTERNAL_STORAGE",
 ]
 add = "".join(f'    <uses-permission android:name="{x}"/>\n' for x in perms if x not in s)
 s = s.replace("<application", add + "    <application", 1)
