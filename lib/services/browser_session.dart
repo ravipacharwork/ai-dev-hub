@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 /// One in-app browser the model can drive. The WebView must be in the widget
@@ -13,6 +16,7 @@ class BrowserSession {
 
   final visible = ValueNotifier<bool>(false);
   final url = ValueNotifier<String>('');
+  final captureKey = GlobalKey();
   Completer<void>? _loading;
 
   late final WebViewController controller = WebViewController()
@@ -50,6 +54,16 @@ class BrowserSession {
     var s = r.toString();
     if (s.startsWith('"')) s = jsonDecode(s) as String;
     return jsonDecode(s);
+  }
+
+  Future<Uint8List> captureScreenshot() async {
+    final render = captureKey.currentContext?.findRenderObject();
+    if (render is! RenderRepaintBoundary) throw StateError('Browser view is not ready for screenshot');
+    final image = await render.toImage(pixelRatio: 2);
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    if (data == null) throw StateError('Could not encode browser screenshot');
+    return data.buffer.asUint8List();
   }
 }
 
@@ -96,7 +110,7 @@ class BrowserHost extends StatelessWidget {
                             onPressed: () => b.visible.value = false),
                       ]),
                     ),
-                  Expanded(child: WebViewWidget(controller: b.controller)),
+                  Expanded(child: RepaintBoundary(key: b.captureKey, child: WebViewWidget(controller: b.controller))),
                 ]),
               ),
             ),

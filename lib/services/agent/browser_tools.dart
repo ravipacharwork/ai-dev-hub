@@ -190,7 +190,7 @@ class BrowserToolkit implements Toolkit {
           await _b.settle(ms);
           return _snapshot();
         case 'browser_screenshot':
-          final bytes = await _b.controller.takeScreenshot();
+          final bytes = await _b.captureScreenshot();
           final dir = await getApplicationDocumentsDirectory();
           final outDir = Directory(p.join(dir.path, 'browser_reports'))..createSync(recursive: true);
           final path = p.join(outDir.path, 'screenshot_${DateTime.now().millisecondsSinceEpoch}.png');
