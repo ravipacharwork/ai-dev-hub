@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../core/haptics.dart';
 import '../../core/theme.dart';
-import '../../services/agent/plan.dart';
+import '../../services/agent/plan.dart' as agent_plan;
 
 /// The task checklist the agent keeps up to date while it works. Tap the
 /// header to collapse it. Re-built with every new [PlanSnapshot].
 class PlanCard extends StatefulWidget {
-  final PlanSnapshot plan;
+  final agent_plan.PlanSnapshot plan;
   const PlanCard({super.key, required this.plan});
 
   @override
@@ -107,7 +107,7 @@ class _PlanCardState extends State<PlanCard> {
 }
 
 class _StepRow extends StatelessWidget {
-  final PlanStep step;
+  final agent_plan.PlanStep step;
   const _StepRow({required this.step});
 
   @override
@@ -115,17 +115,17 @@ class _StepRow extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final s = step.state;
     final Widget icon = switch (s) {
-      StepState.done =>
+      agent_plan.StepState.done =>
         const Icon(Icons.check_circle_rounded, size: 20, color: Color(0xFF30D158)),
-      StepState.failed => Icon(Icons.cancel_rounded, size: 20, color: cs.error),
-      StepState.active => SizedBox(
+      agent_plan.StepState.failed => Icon(Icons.cancel_rounded, size: 20, color: cs.error),
+      agent_plan.StepState.active => SizedBox(
           width: 16,
           height: 16,
           child: CircularProgressIndicator(strokeWidth: 2.2, color: cs.primary)),
-      StepState.pending =>
+      agent_plan.StepState.pending =>
         Icon(Icons.radio_button_unchecked_rounded, size: 20, color: cs.outline),
     };
-    final muted = s == StepState.pending || s == StepState.done;
+    final muted = s == agent_plan.StepState.pending || s == agent_plan.StepState.done;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -145,7 +145,7 @@ class _StepRow extends StatelessWidget {
                 style: TextStyle(
                     fontSize: 14,
                     height: 1.3,
-                    fontWeight: s == StepState.active ? FontWeight.w600 : FontWeight.w400,
+                    fontWeight: s == agent_plan.StepState.active ? FontWeight.w600 : FontWeight.w400,
                     color: muted ? cs.onSurfaceVariant : cs.onSurface)),
           ),
         ),
