@@ -113,9 +113,15 @@ class OpenAICompatibleClient {
   Future<List<String>> listModels(Endpoint e) async {
     final res = await _dio.get(_join(e.baseUrl, 'models'), options: _opts(e));
     final status = res.statusCode ?? 0;
-    if (status != 200) throw classify(status, '${res.data}', res.headers);
-    final data = (res.data is Map ? res.data['data'] : null) as List? ?? [];
-    return data.map((m) => (m as Map)['id'].toString()).toList();
+    final body = _bodyText(res.data);
+    if (status != 200) throw classify(status, body, res.headers);
+    final root = res.data is Map ? Map<String, dynamic>.from(res.data as Map) : const <String, dynamic>{};
+    final data = root['data'];
+    if (data is! List) return const [];
+    return [
+      for (final item in data)
+        if (item is Map && item['id'] != null) '${item['id']}',
+    ];
   }
 
   /// Latency + auth check for the Providers screen.
@@ -126,7 +132,7 @@ class OpenAICompatibleClient {
   }
 
   static LlmError classify(int status, String body, Headers headers) {
-    final msg = body.length > 300 ? body.substring(0, 300) : body;
+    final msg = _cleanError(body);
     if (status == 429) {
       final ra = int.tryParse(headers.value('retry-after') ?? '');
       return RateLimitError(msg, Duration(seconds: ra ?? 30));
@@ -137,4 +143,28 @@ class OpenAICompatibleClient {
 
   static Future<String> _readAll(Stream<Uint8List> s) async =>
       utf8.decode(await s.expand((c) => c).toList(), allowMalformed: true);
+
+  static String _bodyText(Object? data) {
+    if (data is String) return data;
+    if (data is Map) return jsonEncode(data);
+    return '$data';
+  }
+
+  static String _cleanError(String body) {
+    var text = body;
+    try {
+      final root = jsonDecode(body);
+      if (root is Map) {
+        final error = root['error'];
+        if (error is Map && error['message'] != null) {
+          text = '${error['message']}';
+        } else if (root['message'] != null) {
+          text = '${root['message']}';
+        }
+      }
+    } catch (_) {/* keep plain-text provider response */}
+    text = text.replaceAll(RegExp(r'Bearer\s+[A-Za-z0-9._\-]+', caseSensitive: false), 'Bearer [redacted]');
+    text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return text.length > 300 ? '${text.substring(0, 300)}…' : text;
+  }
 }

@@ -49,7 +49,13 @@ class ProvidersScreen extends StatelessWidget {
           ),
           for (final p in providers)
             RepaintBoundary(
-              child: _ProviderSection(def: p, store: store, client: client, stats: () => stats()[p.id]),
+              child: _ProviderSection(
+                def: p,
+                store: store,
+                client: client,
+                stats: () => stats()[p.id],
+                onChanged: onChanged,
+              ),
             ),
         ],
       );
@@ -275,7 +281,8 @@ class _ProviderSection extends StatefulWidget {
   final SecureStore store;
   final OpenAICompatibleClient client;
   final ProviderStats? Function() stats;
-  const _ProviderSection({required this.def, required this.store, required this.client, required this.stats});
+  final Future<void> Function()? onChanged;
+  const _ProviderSection({required this.def, required this.store, required this.client, required this.stats, this.onChanged});
   @override
   State<_ProviderSection> createState() => _ProviderSectionState();
 }
@@ -312,6 +319,7 @@ class _ProviderSectionState extends State<_ProviderSection> {
   Future<void> _save() async {
     await widget.store.setApiKeys(widget.def.id, _key.text.trim().isEmpty ? [] : [_key.text.trim()]);
     if (_isCustom) await widget.store.setBaseUrl(widget.def.id, _base.text.trim());
+    await widget.onChanged?.call();
   }
 
   Future<void> _pasteKey() async {
@@ -348,11 +356,12 @@ class _ProviderSectionState extends State<_ProviderSection> {
       Haptics.copy();
     } on LlmError catch (e) {
       _ok = false;
-      _result = e.status == 401 || e.status == 403 ? 'Invalid key (${e.status})' : e.message;
+      _result = e.status == 401 || e.status == 403 ? 'Invalid key or permission (${e.status}): ${e.message}' : e.message;
       Haptics.error();
     } catch (e) {
       _ok = false;
-      _result = '$e';
+      final text = '$e'.replaceAll(RegExp(r'\s+'), ' ').trim();
+      _result = text.length > 180 ? '${text.substring(0, 180)}…' : text;
       Haptics.error();
     }
     if (mounted) setState(() => _testing = false);

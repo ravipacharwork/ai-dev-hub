@@ -857,16 +857,21 @@ class _ChatScreenState extends State<ChatScreen>
 
   static String _friendlyFailure(Object error) {
     final text = '$error'.toLowerCase();
+    String detail = '$error'
+        .replaceAll(RegExp(r'Bearer\s+[A-Za-z0-9._\-]+', caseSensitive: false), 'Bearer [redacted]')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (detail.length > 180) detail = '${detail.substring(0, 180)}…';
     if (text.contains('401') || text.contains('403') || text.contains('invalid key')) {
-      return 'Failed · API key or permission issue';
+      return 'Failed · API key or permission issue\n$detail';
     }
     if (text.contains('timeout') || text.contains('timed out')) {
-      return 'Failed · Request timed out';
+      return 'Failed · Request timed out\n$detail';
     }
     if (text.contains('rate') || text.contains('429')) {
-      return 'Failed · Provider rate limit reached';
+      return 'Failed · Provider rate limit reached\n$detail';
     }
-    return 'Failed · Please try again or switch provider';
+    return 'Failed · Please try again or switch provider\n$detail';
   }
 
   void _stop() {
