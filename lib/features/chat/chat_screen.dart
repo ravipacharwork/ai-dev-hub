@@ -350,7 +350,7 @@ class _ChatScreenState extends State<ChatScreen>
             {'type': 'image_url', 'image_url': {'url': img.dataUrl}},
         ];
 
-  List<Map<String, dynamic>> _history() {
+  List<Map<String, dynamic>> _history([String? task]) {
     // Merge consecutive same-role text messages (e.g. a user message whose reply
     // failed, or assistant text split around tool calls): some providers
     // reject back-to-back messages with the same role. Messages with photos
@@ -373,8 +373,11 @@ class _ChatScreenState extends State<ChatScreen>
     final modeInstruction = _mode == ChatMode.plan
         ? '\n\nPLAN MODE: Produce a clear implementation plan, assumptions, file-level changes, risks, and verification steps. Do not call tools, edit files, access repositories, or run commands.'
         : '';
+    final latestTask = task ?? (recent.where((m) => m['role'] == 'user').isEmpty
+        ? null
+        : recent.lastWhere((m) => m['role'] == 'user')['content']?.toString());
     return [
-      {'role': 'system', 'content': '${widget.systemPrompt}${widget.skills.promptAddendum}$modeInstruction'},
+      {'role': 'system', 'content': '${widget.systemPrompt}${widget.skills.promptAddendumFor(latestTask)}$modeInstruction'},
       ...recent,
     ];
   }
@@ -633,7 +636,7 @@ class _ChatScreenState extends State<ChatScreen>
 
     final req = ChatRequest(
       model: _model,
-      messages: _history(), // empty assistant placeholder is already excluded
+      messages: _history(text), // empty assistant placeholder is already excluded
     );
 
     _sub = widget.router.stream(req).listen(
