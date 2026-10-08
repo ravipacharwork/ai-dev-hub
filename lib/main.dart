@@ -224,7 +224,7 @@ class AppServices {
     // Terminal: secrets, GitHub client and the /storage switch are looked up
     // lazily so token / setting changes apply immediately.
     a.terminalBridge
-      ..secrets = (name) async => name == 'github' ? a.store.githubToken() : null
+      ..secrets = ((name) async => name == 'github' ? a.store.githubToken() : null)
       ..github = (() => a.gh)
       ..storageAllowed = (() => a.settings.terminalStorage);
     a.deviceFiles = DeviceFileToolkit('${docs.path}/fs_trash');
