@@ -294,6 +294,8 @@ class IosField extends StatelessWidget {
         obscureText: obscure,
         maxLines: maxLines,
         minLines: 1,
+        clearButtonMode: OverlayVisibilityMode.never,
+        suffixMode: OverlayVisibilityMode.always,
         autocorrect: false,
         enableSuggestions: false,
         onChanged: onChanged,

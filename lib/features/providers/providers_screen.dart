@@ -34,7 +34,7 @@ class ProvidersScreen extends StatelessWidget {
                 'OmniRoute picks the fastest healthy provider and cools down only the key that failed. Keys stay in encrypted device storage.',
             children: [
               IosTile(
-                icon: CupertinoIcons.square_stack_3d_up_fill,
+                icon: Icons.layers_rounded,
                 iconColor: IosColors.purple,
                 title: 'Key pools',
                 subtitle: 'Add many keys per provider',
@@ -196,7 +196,7 @@ class _OmniRouteKeysScreenState extends State<OmniRouteKeysScreen> {
       children: [
         IosSection(header: 'Provider', children: [
           IosTile(
-            icon: CupertinoIcons.cloud_fill,
+            icon: Icons.cloud_rounded,
             iconColor: IosColors.blue,
             title: 'Provider',
             value: _def?.name ?? 'None',
@@ -218,13 +218,13 @@ class _OmniRouteKeysScreenState extends State<OmniRouteKeysScreen> {
                   padding: EdgeInsets.zero,
                   minSize: 34,
                   onPressed: _paste,
-                  child: const Icon(CupertinoIcons.doc_on_clipboard_fill, size: 21),
+                  child: const Icon(Icons.content_paste_rounded, size: 20),
                 ),
                 CupertinoButton(
                   padding: const EdgeInsets.only(right: 12),
                   minSize: 30,
                   onPressed: _add,
-                  child: const Icon(CupertinoIcons.add_circled_solid, size: 26),
+                  child: const Icon(Icons.add_circle_rounded, size: 25),
                 ),
               ]),
               onChanged: null,
@@ -238,7 +238,7 @@ class _OmniRouteKeysScreenState extends State<OmniRouteKeysScreen> {
               : [
                   for (var i = 0; i < _keys.length; i++)
                     IosTile(
-                      icon: CupertinoIcons.lock_fill,
+                      icon: Icons.lock_rounded,
                       iconColor: _health[_keys[i]] == null
                           ? IosColors.gray
                           : (_health[_keys[i]]!.startsWith('Online') ? IosColors.green : IosColors.red),
@@ -252,13 +252,13 @@ class _OmniRouteKeysScreenState extends State<OmniRouteKeysScreen> {
                           setState(() => _keys.removeAt(i));
                           await _save();
                         },
-                        child: const Icon(CupertinoIcons.minus_circle_fill, color: IosColors.red, size: 24),
+                        child: const Icon(Icons.remove_circle_rounded, color: IosColors.red, size: 24),
                       ),
                     ),
                 ],
         ),
         IosButton(_testing ? 'Testing…' : 'Test all keys',
-            icon: CupertinoIcons.waveform_path_ecg,
+            icon: Icons.monitor_heart_rounded,
             tinted: true,
             onPressed: _testing || _keys.isEmpty ? null : _testAll),
       ],
@@ -287,9 +287,13 @@ class _ProviderSectionState extends State<_ProviderSection> {
   void initState() {
     super.initState();
     () async {
-      final keys = await widget.store.apiKeys(widget.def.id);
+      final results = await Future.wait<Object?>([
+        widget.store.apiKeys(widget.def.id),
+        widget.store.baseUrl(widget.def.id),
+      ]);
+      final keys = results[0] as List<String>;
       _key.text = keys.isEmpty ? '' : keys.first;
-      _base.text = await widget.store.baseUrl(widget.def.id) ?? widget.def.baseUrl;
+      _base.text = (results[1] as String?) ?? widget.def.baseUrl;
       if (mounted) setState(() => _loaded = true);
     }();
   }
@@ -373,13 +377,13 @@ class _ProviderSectionState extends State<_ProviderSection> {
               padding: EdgeInsets.zero,
               minSize: 34,
               onPressed: _pasteKey,
-              child: const Icon(CupertinoIcons.doc_on_clipboard_fill, size: 20),
+              child: const Icon(Icons.content_paste_rounded, size: 19),
             ),
             CupertinoButton(
               padding: const EdgeInsets.only(right: 12),
               minSize: 30,
               onPressed: () => setState(() => _show = !_show),
-              child: Icon(_show ? CupertinoIcons.eye_slash_fill : CupertinoIcons.eye_fill,
+              child: Icon(_show ? Icons.visibility_off_rounded : Icons.visibility_rounded,
                   size: 20, color: IosColors.secondary(context)),
             ),
           ]),
