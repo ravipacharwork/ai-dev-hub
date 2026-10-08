@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/haptics.dart';
 import '../../core/theme.dart';
@@ -67,6 +68,14 @@ class _ConnectorsScreenState extends State<ConnectorsScreen> {
     await widget.telegram.stop();
     await widget.store.setTelegramToken(null);
     if (mounted) setState(() {});
+  }
+
+  Future<void> _pasteTelegramToken() async {
+    final value = (await Clipboard.getData(Clipboard.kTextPlain))?.text?.trim();
+    if (value == null || value.isEmpty) return;
+    _tgToken.text = value;
+    _tgToken.selection = TextSelection.collapsed(offset: value.length);
+    Haptics.copy();
   }
 
   Future<void> _tgApprove() async {
@@ -150,7 +159,14 @@ class _ConnectorsScreenState extends State<ConnectorsScreen> {
               TextField(
                   controller: _tgToken,
                   obscureText: true,
-                  decoration: const InputDecoration(labelText: 'Bot token')),
+                  decoration: InputDecoration(
+                    labelText: 'Bot token',
+                    suffixIcon: IconButton(
+                      tooltip: 'Paste token',
+                      icon: const Icon(Icons.content_paste_rounded),
+                      onPressed: _pasteTelegramToken,
+                    ),
+                  )),
             if (_pendingChat != null) ...[
               const SizedBox(height: 8),
               Text('Message from ${_pendingChat!.split('|').last}. Approve this chat?', style: sub),

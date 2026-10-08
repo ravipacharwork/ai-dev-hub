@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show Clipboard, ClipboardData, rootBundle;
 
 import '../../core/haptics.dart';
 import '../../core/theme.dart';
@@ -103,6 +103,14 @@ class _GitHubScreenState extends State<GitHubScreen> {
     });
   }
 
+  Future<void> _pasteToken() async {
+    final value = (await Clipboard.getData(Clipboard.kTextPlain))?.text?.trim();
+    if (value == null || value.isEmpty) return;
+    _token.text = value;
+    _token.selection = TextSelection.collapsed(offset: value.length);
+    Haptics.copy();
+  }
+
   Future<void> _choose(Map<String, dynamic> r) async {
     final sel = RepoSelection(
         RepoRef(r['owner']['login'] as String, r['name'] as String),
@@ -173,10 +181,18 @@ class _GitHubScreenState extends State<GitHubScreen> {
                   labelText: 'Personal access token',
                   helperText: 'Fine-grained: Contents RW, Actions RW, Workflows RW, Metadata R',
                   helperMaxLines: 2,
-                  suffixIcon: IconButton(
-                    icon: Icon(_show ? Icons.visibility_off_rounded : Icons.visibility_rounded),
-                    onPressed: () => setState(() => _show = !_show),
-                  ),
+                  suffixIcon: Row(mainAxisSize: MainAxisSize.min, children: [
+                    IconButton(
+                      tooltip: 'Paste token',
+                      icon: const Icon(Icons.content_paste_rounded),
+                      onPressed: _pasteToken,
+                    ),
+                    IconButton(
+                      tooltip: _show ? 'Hide token' : 'Show token',
+                      icon: Icon(_show ? Icons.visibility_off_rounded : Icons.visibility_rounded),
+                      onPressed: () => setState(() => _show = !_show),
+                    ),
+                  ]),
                 ),
               ),
               const SizedBox(height: 10),
