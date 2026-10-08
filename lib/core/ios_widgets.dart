@@ -47,7 +47,7 @@ class IosPage extends StatelessWidget {
         body: Column(children: [
           Expanded(
             child: CustomScrollView(
-              physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+              physics: const ClampingScrollPhysics(),
               slivers: [
                 CupertinoSliverNavigationBar(
                   largeTitle: Text(title),

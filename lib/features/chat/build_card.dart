@@ -41,8 +41,7 @@ class _BuildCardState extends State<BuildCard> {
         BuildPhase.queued => 'Queued on GitHub Actions',
         BuildPhase.running => 'Building…',
         BuildPhase.succeeded => 'Build complete',
-        BuildPhase.failed => 'Build failed',
-        BuildPhase.timedOut => 'Build timed out',
+        BuildPhase.failed || BuildPhase.timedOut => 'Failed',
       };
 
   @override
@@ -92,7 +91,7 @@ class _BuildCardState extends State<BuildCard> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(_title,
                   style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
-              if (s?.detail != null)
+              if (s?.detail != null && !bad)
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: Text(s!.detail!,
@@ -120,7 +119,7 @@ class _BuildCardState extends State<BuildCard> {
               Icon(_showLog ? Icons.expand_less_rounded : Icons.expand_more_rounded,
                   size: 18, color: cs.onSurfaceVariant),
               const SizedBox(width: 4),
-              Text(_showLog ? 'Hide error log' : 'Show error log',
+              Text(_showLog ? 'Hide details' : 'Show details',
                   style: tt.labelLarge?.copyWith(color: cs.onSurfaceVariant)),
             ]),
           ),

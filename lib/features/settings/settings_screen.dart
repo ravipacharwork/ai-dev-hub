@@ -97,7 +97,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           footer: g.error ?? g.kind.blurb,
           children: [
             IosTile(
-              icon: CupertinoIcons.antenna_radiowaves_left_right,
+              icon: Icons.router_rounded,
               iconColor: IosColors.blue,
               title: g.kind.label,
               subtitle: g.busy
@@ -136,7 +136,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               'Commits, builds and pushes always ask first. Tool calling needs a model that supports it.',
           children: [
             IosSwitchTile(
-              icon: CupertinoIcons.arrow_branch,
+              icon: Icons.account_tree_rounded,
               iconColor: IosColors.indigo,
               title: 'Work on my GitHub repo',
               subtitle: 'Read, edit and stage files on the selected repo',
@@ -148,7 +148,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             if (s.toolsEnabled)
               IosSwitchTile(
-                icon: CupertinoIcons.checkmark_shield_fill,
+                icon: Icons.verified_user_rounded,
                 iconColor: IosColors.green,
                 title: 'Auto-verify builds',
                 subtitle: 'After a commit, build on GitHub, read errors and fix them (max 3 tries)',
@@ -159,7 +159,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
             IosSwitchTile(
-              icon: CupertinoIcons.chevron_left_slash_chevron_right,
+              icon: Icons.terminal_rounded,
               iconColor: IosColors.green,
               title: 'Background terminal',
               subtitle: 'The agent runs commands silently. Nothing is shown on screen',
@@ -170,7 +170,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
             IosSwitchTile(
-              icon: CupertinoIcons.globe,
+              icon: Icons.language_rounded,
               iconColor: IosColors.teal,
               title: 'Browser automation',
               subtitle: 'Open pages, click and type in an in-app browser',
@@ -182,7 +182,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             if (s.browserEnabled)
               IosSwitchTile(
-                icon: CupertinoIcons.shield_fill,
+                icon: Icons.shield_rounded,
                 iconColor: IosColors.orange,
                 title: 'Ask before browser actions',
                 subtitle: 'Recommended: web pages can try to trick the model',
@@ -193,7 +193,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
             IosSwitchTile(
-              icon: CupertinoIcons.folder_fill,
+              icon: Icons.folder_rounded,
               iconColor: IosColors.blue,
               title: 'Phone file access',
               subtitle: 'Deletes ask first and go to a 30-day trash',
@@ -219,7 +219,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           footer: 'Power Mode never grants root, ADB, hidden app access or silent installs.',
           children: [
             IosSwitchTile(
-              icon: CupertinoIcons.bolt_fill,
+              icon: Icons.bolt_rounded,
               iconColor: IosColors.orange,
               title: 'Power Mode',
               subtitle: 'Advanced agent workflows',
@@ -230,7 +230,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
             IosTile(
-              icon: CupertinoIcons.speedometer,
+              icon: Icons.speed_rounded,
               iconColor: IosColors.pink,
               title: 'Routing profile',
               value: _profileLabel(s.routingProfile),
@@ -241,19 +241,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         IosSection(header: 'Chats', children: [
           IosTile(
-              icon: CupertinoIcons.square_arrow_up,
+              icon: Icons.upload_rounded,
               iconColor: IosColors.blue,
               title: 'Export as JSON',
               chevron: true,
               onTap: () => _export(false)),
           IosTile(
-              icon: CupertinoIcons.doc_text,
+              icon: Icons.description_rounded,
               iconColor: IosColors.indigo,
               title: 'Export as Markdown',
               chevron: true,
               onTap: () => _export(true)),
           IosTile(
-              icon: CupertinoIcons.square_arrow_down,
+              icon: Icons.download_rounded,
               iconColor: IosColors.green,
               title: 'Import JSON',
               chevron: true,
@@ -261,7 +261,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ]),
         IosSection(header: 'Advanced', children: [
           IosTile(
-            icon: CupertinoIcons.cube_box_fill,
+            icon: Icons.key_rounded,
             iconColor: IosColors.purple,
             title: 'API keys and providers',
             subtitle: 'Add keys, test connections',
@@ -269,7 +269,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: widget.onOpenProviders,
           ),
           IosTile(
-            icon: CupertinoIcons.arrow_2_circlepath,
+            icon: Icons.sync_alt_rounded,
             iconColor: IosColors.gray,
             title: 'Local proxy server',
             subtitle: 'Share the router with other apps on this device',

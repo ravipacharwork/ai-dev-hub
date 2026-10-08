@@ -219,7 +219,7 @@ class AppServices {
         gh: () => a.gh,
         connected: () => a.selection == null ? null : (repo: a.selection!.repo, branch: a.selection!.branch),
         store: a.skills);
-    await a.skillHub.load();
+    unawaited(a.skillHub.load());
     final docs = await getApplicationDocumentsDirectory();
     // Terminal: secrets, GitHub client and the /storage switch are looked up
     // lazily so token / setting changes apply immediately.
@@ -261,8 +261,9 @@ class AppServices {
       },
     );
     await a.rebuildChain(); // fills `upstream`
-    await a.gateways.init(); // OmniRoute starts by default
-    await a.rebuildChain();
+    // Start the local gateway in the background; the chat shell can appear
+    // immediately instead of waiting for the local proxy to bind its port.
+    unawaited(a.gateways.init()); // OmniRoute starts by default
     unawaited(a.refreshGatewayModels()); // live model list, never blocks startup
 
     // Telegram bot: resume automatically so replies keep flowing after a restart.
@@ -514,7 +515,6 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   void _newChat() {
-    if (_sessions[_current].messages.isEmpty) return;
     setState(() {
       _sessions.add(_newSession());
       _current = _sessions.length - 1;

@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/haptics.dart';
 import '../../core/ios_widgets.dart';
@@ -45,7 +46,9 @@ class ProvidersScreen extends StatelessWidget {
             ],
           ),
           for (final p in providers)
-            _ProviderSection(def: p, store: store, client: client, stats: () => stats()[p.id]),
+            RepaintBoundary(
+              child: _ProviderSection(def: p, store: store, client: client, stats: () => stats()[p.id]),
+            ),
         ],
       );
 }
@@ -151,6 +154,15 @@ class _OmniRouteKeysScreenState extends State<OmniRouteKeysScreen> {
     await _save();
   }
 
+  Future<void> _paste() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final value = data?.text?.trim();
+    if (value == null || value.isEmpty) return;
+    _input.text = value;
+    _input.selection = TextSelection.collapsed(offset: value.length);
+    Haptics.copy();
+  }
+
   void _pickProvider() {
     showCupertinoModalPopup<void>(
       context: context,
@@ -201,12 +213,20 @@ class _OmniRouteKeysScreenState extends State<OmniRouteKeysScreen> {
               placeholder: 'Paste API key',
               obscure: true,
               mono: true,
-              suffix: CupertinoButton(
-                padding: const EdgeInsets.only(right: 12),
-                minSize: 30,
-                onPressed: _add,
-                child: const Icon(CupertinoIcons.add_circled_solid, size: 26),
-              ),
+              suffix: Row(mainAxisSize: MainAxisSize.min, children: [
+                CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  minSize: 34,
+                  onPressed: _paste,
+                  child: const Icon(CupertinoIcons.doc_on_clipboard_fill, size: 21),
+                ),
+                CupertinoButton(
+                  padding: const EdgeInsets.only(right: 12),
+                  minSize: 30,
+                  onPressed: _add,
+                  child: const Icon(CupertinoIcons.add_circled_solid, size: 26),
+                ),
+              ]),
               onChanged: null,
             ),
           ],
@@ -286,6 +306,15 @@ class _ProviderSectionState extends State<_ProviderSection> {
     if (_isCustom) await widget.store.setBaseUrl(widget.def.id, _base.text.trim());
   }
 
+  Future<void> _pasteKey() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final value = data?.text?.trim();
+    if (value == null || value.isEmpty) return;
+    _key.text = value;
+    _key.selection = TextSelection.collapsed(offset: value.length);
+    Haptics.copy();
+  }
+
   Future<void> _test() async {
     Haptics.toggle();
     setState(() {
@@ -339,13 +368,21 @@ class _ProviderSectionState extends State<_ProviderSection> {
           placeholder: widget.def.requiresKey ? 'API key' : 'API key (optional)',
           obscure: !_show,
           mono: true,
-          suffix: CupertinoButton(
-            padding: const EdgeInsets.only(right: 12),
-            minSize: 30,
-            onPressed: () => setState(() => _show = !_show),
-            child: Icon(_show ? CupertinoIcons.eye_slash_fill : CupertinoIcons.eye_fill,
-                size: 20, color: IosColors.secondary(context)),
-          ),
+          suffix: Row(mainAxisSize: MainAxisSize.min, children: [
+            CupertinoButton(
+              padding: EdgeInsets.zero,
+              minSize: 34,
+              onPressed: _pasteKey,
+              child: const Icon(CupertinoIcons.doc_on_clipboard_fill, size: 20),
+            ),
+            CupertinoButton(
+              padding: const EdgeInsets.only(right: 12),
+              minSize: 30,
+              onPressed: () => setState(() => _show = !_show),
+              child: Icon(_show ? CupertinoIcons.eye_slash_fill : CupertinoIcons.eye_fill,
+                  size: 20, color: IosColors.secondary(context)),
+            ),
+          ]),
         ),
         IosTile(
           title: _testing ? 'Testing…' : 'Test connection',

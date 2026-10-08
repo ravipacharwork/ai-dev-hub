@@ -645,7 +645,7 @@ class _ChatScreenState extends State<ChatScreen>
       onError: (e) {
         Haptics.error();
         setState(() {
-          reply.error = '$e';
+          reply.error = _friendlyFailure(e);
           reply.streaming = false;
           _sub = null;
         });
@@ -800,7 +800,9 @@ class _ChatScreenState extends State<ChatScreen>
           case AgentDeliver(:final items):
             setState(() {
               for (final d in items) {
-                _items.add(DeliverableItem(d, autoRun: d.kind == DeliverableKind.html));
+                // Never execute generated code automatically. The user gets an
+                // explicit Preview/Run action on the delivered card.
+                _items.add(DeliverableItem(d, autoRun: false));
               }
             });
             Haptics.copy();
@@ -824,7 +826,7 @@ class _ChatScreenState extends State<ChatScreen>
             cur = TextItem('assistant', '');
             _items.add(cur!);
           }
-          cur!.error = '$err';
+          cur!.error = _friendlyFailure(err);
           finish();
         });
         _notify();
@@ -848,6 +850,20 @@ class _ChatScreenState extends State<ChatScreen>
     } catch (_) {
       return null;
     }
+  }
+
+  static String _friendlyFailure(Object error) {
+    final text = '$error'.toLowerCase();
+    if (text.contains('401') || text.contains('403') || text.contains('invalid key')) {
+      return 'Failed · API key or permission issue';
+    }
+    if (text.contains('timeout') || text.contains('timed out')) {
+      return 'Failed · Request timed out';
+    }
+    if (text.contains('rate') || text.contains('429')) {
+      return 'Failed · Provider rate limit reached';
+    }
+    return 'Failed · Please try again or switch provider';
   }
 
   void _stop() {
