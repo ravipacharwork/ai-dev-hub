@@ -117,6 +117,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     return IosPage(
       title: 'Settings',
+      onBack: () => Navigator.of(context).maybePop(),
       onClose: () => Navigator.of(context).maybePop(),
       children: [
         if (widget.gateways != null) _gateway(widget.gateways!),

@@ -28,6 +28,7 @@ class ProvidersScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => IosPage(
         title: 'API Keys',
+        onBack: () => Navigator.of(context).maybePop(),
         onClose: () => Navigator.of(context).maybePop(),
         children: [
           IosSection(
@@ -188,12 +189,13 @@ class _OmniRouteKeysScreenState extends State<OmniRouteKeysScreen> {
   @override
   Widget build(BuildContext context) {
     if (!_ready) {
-      return IosPage(title: 'Key Pool', onClose: () => Navigator.of(context).maybePop(), children: const [
+      return IosPage(title: 'Key Pool', onBack: () => Navigator.of(context).maybePop(), onClose: () => Navigator.of(context).maybePop(), children: const [
         Padding(padding: EdgeInsets.only(top: 80), child: Center(child: CupertinoActivityIndicator(radius: 14))),
       ]);
     }
     return IosPage(
       title: 'Key Pool',
+      onBack: () => Navigator.of(context).maybePop(),
       onClose: () => Navigator.of(context).maybePop(),
       children: [
         IosSection(header: 'Provider', children: [

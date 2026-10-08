@@ -31,9 +31,10 @@ class IosPage extends StatelessWidget {
   final String title;
   final List<Widget> children;
   final Widget? trailing;
+  final VoidCallback? onBack;
   final VoidCallback? onClose;
   final Widget? bottom; // pinned below the list (e.g. a composer)
-  const IosPage({super.key, required this.title, required this.children, this.trailing, this.onClose, this.bottom});
+  const IosPage({super.key, required this.title, required this.children, this.trailing, this.onBack, this.onClose, this.bottom});
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +52,15 @@ class IosPage extends StatelessWidget {
               physics: const ClampingScrollPhysics(),
               slivers: [
                 CupertinoSliverNavigationBar(
-                  largeTitle: Text(title),
+                largeTitle: Text(title),
+                leading: onBack == null
+                    ? null
+                    : CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        minSize: 36,
+                        onPressed: onBack,
+                        child: const Icon(CupertinoIcons.back, size: 27),
+                      ),
                 trailing: trailing ?? (onClose == null
                     ? null
                     : CupertinoButton(
