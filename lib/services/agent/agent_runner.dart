@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
+
 import '../../core/models.dart';
 import '../build_poller.dart';
 import '../deliverables.dart';
@@ -85,8 +87,10 @@ class AgentRunner {
 
   bool _cancelled = false;
   Completer<void> _cancelSignal = Completer<void>();
+  CancelToken _cancelToken = CancelToken();
   void cancel() {
     _cancelled = true;
+    if (!_cancelToken.isCancelled) _cancelToken.cancel('Agent task cancelled by user');
     if (!_cancelSignal.isCompleted) _cancelSignal.complete();
   }
 
@@ -100,6 +104,7 @@ class AgentRunner {
   }) async* {
     _cancelled = false;
     _cancelSignal = Completer<void>();
+    _cancelToken = CancelToken();
     final started = DateTime.now();
     String? memory;
     try {
@@ -141,7 +146,8 @@ class AgentRunner {
       final calls = <_Partial>[];
       final slotOf = <int, int>{}; // provider's tool_call index -> our slot
 
-      await for (final payload in router.stream(req)) {
+      try {
+        await for (final payload in router.stream(req, cancel: _cancelToken)) {
         if (_cancelled) return;
         if (payload == '[DONE]') continue;
         final Map j;
@@ -188,6 +194,10 @@ class AgentRunner {
             }
           }
         }
+        }
+      } on DioException catch (e) {
+        if (_cancelled && CancelToken.isCancel(e)) return;
+        rethrow;
       }
 
       final done = [for (final p in calls) if (p.name.isNotEmpty) p];
