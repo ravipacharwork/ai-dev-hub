@@ -397,10 +397,13 @@ class _ProviderSectionState extends State<_ProviderSection> {
           subtitle: _result == null ? null : (_ok ? 'Connected · $_result' : _result),
           trailing: _testing
               ? const CupertinoActivityIndicator()
-              : (_result == null
+                  : (_result == null
                   ? null
-                  : Icon(_ok ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.exclamationmark_circle_fill,
-                      color: _ok ? IosColors.green : IosColors.red)),
+                  : Icon(
+                      _ok ? Icons.check_circle_rounded : Icons.error_rounded,
+                      size: 24,
+                      color: _ok ? IosColors.green : IosColors.red,
+                    )),
           onTap: _testing ? null : _test,
         ),
       ],
