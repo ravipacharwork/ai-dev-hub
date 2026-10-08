@@ -31,8 +31,9 @@ class IosPage extends StatelessWidget {
   final String title;
   final List<Widget> children;
   final Widget? trailing;
+  final VoidCallback? onClose;
   final Widget? bottom; // pinned below the list (e.g. a composer)
-  const IosPage({super.key, required this.title, required this.children, this.trailing, this.bottom});
+  const IosPage({super.key, required this.title, required this.children, this.trailing, this.onClose, this.bottom});
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +52,14 @@ class IosPage extends StatelessWidget {
               slivers: [
                 CupertinoSliverNavigationBar(
                   largeTitle: Text(title),
-                  trailing: trailing,
+                trailing: trailing ?? (onClose == null
+                    ? null
+                    : CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        minSize: 36,
+                        onPressed: onClose,
+                        child: const Icon(Icons.close_rounded, size: 22),
+                      )),
                   backgroundColor: IosColors.groupBg(context).withOpacity(0.85),
                   border: null,
                   stretch: true,
@@ -136,7 +144,7 @@ class IosTile extends StatelessWidget {
   final String? subtitle, value;
   final Widget? trailing;
   final VoidCallback? onTap;
-  final bool chevron, destructive;
+  final bool chevron, close, destructive;
   const IosTile({
     super.key,
     this.icon,
@@ -147,6 +155,7 @@ class IosTile extends StatelessWidget {
     this.trailing,
     this.onTap,
     this.chevron = false,
+    this.close = false,
     this.destructive = false,
   });
 
@@ -179,6 +188,11 @@ class IosTile extends StatelessWidget {
               child: Text(value!, style: TextStyle(fontSize: 17, color: sec)),
             ),
           if (trailing != null) Padding(padding: const EdgeInsets.only(left: 8), child: trailing!),
+          if (close)
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Icon(Icons.close_rounded, size: 20, color: sec),
+            ),
           if (chevron)
             Padding(
               padding: const EdgeInsets.only(left: 6),

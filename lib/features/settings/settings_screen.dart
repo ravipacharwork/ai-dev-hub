@@ -117,6 +117,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     return IosPage(
       title: 'Settings',
+      onClose: () => Navigator.of(context).maybePop(),
       children: [
         if (widget.gateways != null) _gateway(widget.gateways!),
         IosSection(header: 'Appearance', children: [
@@ -234,7 +235,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               iconColor: IosColors.pink,
               title: 'Routing profile',
               value: _profileLabel(s.routingProfile),
-              chevron: true,
+              close: true,
               onTap: _pickProfile,
             ),
           ],
@@ -244,19 +245,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               icon: Icons.upload_rounded,
               iconColor: IosColors.blue,
               title: 'Export as JSON',
-              chevron: true,
+              close: true,
               onTap: () => _export(false)),
           IosTile(
               icon: Icons.description_rounded,
               iconColor: IosColors.indigo,
               title: 'Export as Markdown',
-              chevron: true,
+              close: true,
               onTap: () => _export(true)),
           IosTile(
               icon: Icons.download_rounded,
               iconColor: IosColors.green,
               title: 'Import JSON',
-              chevron: true,
+              close: true,
               onTap: _import),
         ]),
         IosSection(header: 'Advanced', children: [
@@ -265,7 +266,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             iconColor: IosColors.purple,
             title: 'API keys and providers',
             subtitle: 'Add keys, test connections',
-            chevron: true,
+            close: true,
             onTap: widget.onOpenProviders,
           ),
           IosTile(
@@ -273,7 +274,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             iconColor: IosColors.gray,
             title: 'Local proxy server',
             subtitle: 'Share the router with other apps on this device',
-            chevron: true,
+            close: true,
             onTap: widget.onOpenProxy,
           ),
         ]),

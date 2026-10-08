@@ -28,13 +28,14 @@ class ProvidersScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => IosPage(
         title: 'API Keys',
+        onClose: () => Navigator.of(context).maybePop(),
         children: [
           IosSection(
             footer:
                 'OmniRoute picks the fastest healthy provider and cools down only the key that failed. Keys stay in encrypted device storage.',
             children: [
               IosTile(
-                icon: Icons.layers_rounded,
+                icon: Icons.key_rounded,
                 iconColor: IosColors.purple,
                 title: 'Key pools',
                 subtitle: 'Add many keys per provider',
@@ -187,16 +188,17 @@ class _OmniRouteKeysScreenState extends State<OmniRouteKeysScreen> {
   @override
   Widget build(BuildContext context) {
     if (!_ready) {
-      return const IosPage(title: 'Key Pool', children: [
+      return IosPage(title: 'Key Pool', onClose: () => Navigator.of(context).maybePop(), children: const [
         Padding(padding: EdgeInsets.only(top: 80), child: Center(child: CupertinoActivityIndicator(radius: 14))),
       ]);
     }
     return IosPage(
       title: 'Key Pool',
+      onClose: () => Navigator.of(context).maybePop(),
       children: [
         IosSection(header: 'Provider', children: [
           IosTile(
-            icon: Icons.cloud_rounded,
+            icon: Icons.cloud_sync_rounded,
             iconColor: IosColors.blue,
             title: 'Provider',
             value: _def?.name ?? 'None',
