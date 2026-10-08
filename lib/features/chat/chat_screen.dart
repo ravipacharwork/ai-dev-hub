@@ -679,6 +679,78 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollDown();
   }
 
+  void _showTaskInfo() {
+    final r = widget.router;
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+            child: ListView(shrinkWrap: true, children: [
+              Row(children: [
+                Icon(Icons.insights_rounded, color: cs.primary),
+                const SizedBox(width: 10),
+                Text('Task Info', style: Theme.of(ctx).textTheme.titleLarge),
+              ]),
+              const SizedBox(height: 4),
+              Text('Live usage across all configured API routes', style: Theme.of(ctx).textTheme.bodySmall),
+              const SizedBox(height: 16),
+              Row(children: [
+                Expanded(child: _StatTile('Total tokens', _fmt(r.totalTokens), Icons.token_rounded)),
+                const SizedBox(width: 8),
+                Expanded(child: _StatTile('Requests', '${r.totalRequests}', Icons.swap_vert_rounded)),
+              ]),
+              const SizedBox(height: 8),
+              Row(children: [
+                Expanded(child: _StatTile('Input', _fmt(r.totalPromptTokens), Icons.arrow_downward_rounded)),
+                const SizedBox(width: 8),
+                Expanded(child: _StatTile('Output', _fmt(r.totalCompletionTokens), Icons.arrow_upward_rounded)),
+              ]),
+              const SizedBox(height: 16),
+              Text('Remaining quota', style: Theme.of(ctx).textTheme.titleSmall),
+              const SizedBox(height: 4),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.account_balance_outlined),
+                title: const Text('Provider quota'),
+                subtitle: const Text('Not reported by most OpenAI-compatible APIs; usage above is tracked locally.'),
+              ),
+              if (r.totalErrors > 0)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.error_outline_rounded, color: cs.error),
+                  title: Text('${r.totalErrors} failed request${r.totalErrors == 1 ? '' : 's'}'),
+                  subtitle: const Text('Failed requests do not add token usage.'),
+                ),
+              if (r.providerUsage.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text('By provider / all API keys', style: Theme.of(ctx).textTheme.titleSmall),
+                for (final row in r.providerUsage)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    leading: const Icon(Icons.hub_outlined, size: 20),
+                    title: Text(row.$1),
+                    subtitle: Text('${_fmt(row.$2.promptTokens + row.$2.completionTokens)} tokens · ${row.$2.requests} requests'),
+                  ),
+              ],
+            ]),
+          ),
+        );
+      },
+    );
+  }
+
+  static String _fmt(int n) => n >= 1000000
+      ? '${(n / 1000000).toStringAsFixed(1)}M'
+      : n >= 1000
+          ? '${(n / 1000).toStringAsFixed(1)}K'
+          : '$n';
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -710,6 +782,11 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               centerTitle: true,
               actions: [
+                IconButton(
+                  tooltip: 'Task Info',
+                  onPressed: _showTaskInfo,
+                  icon: const Icon(Icons.insights_outlined),
+                ),
                 IconButton(
                   tooltip: 'GitHub',
                   onPressed: widget.onOpenGitHub,
@@ -1157,6 +1234,32 @@ class _Composer extends StatelessWidget {
           ]),
         ),
       ),
+    );
+  }
+}
+
+class _StatTile extends StatelessWidget {
+  final String label, value;
+  final IconData icon;
+  const _StatTile(this.label, this.value, this.icon);
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(children: [
+        Icon(icon, size: 18, color: cs.primary),
+        const SizedBox(width: 8),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(value, style: Theme.of(context).textTheme.titleMedium),
+          Text(label, style: Theme.of(context).textTheme.bodySmall),
+        ])),
+      ]),
     );
   }
 }

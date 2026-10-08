@@ -75,6 +75,18 @@ class RouterService {
   /// the models the user can actually use right now.
   List<Endpoint> available() => chain().where((e) => !_cooling(e)).toList();
 
+  int get totalPromptTokens => stats.values.fold(0, (n, s) => n + s.promptTokens);
+  int get totalCompletionTokens => stats.values.fold(0, (n, s) => n + s.completionTokens);
+  int get totalTokens => totalPromptTokens + totalCompletionTokens;
+  int get totalRequests => stats.values.fold(0, (n, s) => n + s.requests);
+  int get totalErrors => stats.values.fold(0, (n, s) => n + s.errors);
+
+  /// Token counters grouped by provider. Quota is intentionally not guessed:
+  /// most providers do not expose remaining credits through OpenAI responses.
+  List<(String, ProviderStats)> get providerUsage => [
+        for (final e in stats.entries) (DefaultProviders.label(e.key), e.value),
+      ]..sort((a, b) => b.$2.promptTokens + b.$2.completionTokens - a.$2.promptTokens - a.$2.completionTokens);
+
   /// Streams raw SSE payloads from the first healthy target.
   /// Fails over ONLY before the first payload is emitted — after that, switching
   /// providers would duplicate/garble output, so the error is rethrown instead.
