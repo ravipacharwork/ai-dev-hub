@@ -11,6 +11,7 @@ import 'package:share_plus/share_plus.dart';
 
 import 'core/chat_mode.dart';
 import 'core/models.dart';
+import 'core/sparkle.dart';
 import 'core/theme.dart';
 import 'features/chat/chat_screen.dart';
 import 'features/github/github_screen.dart';
@@ -25,6 +26,9 @@ import 'services/agent/browser_tools.dart';
 import 'services/agent/agent_runner.dart';
 import 'services/agent/agent_tools.dart';
 import 'services/agent/device_file_tools.dart';
+import 'services/agent/local_undo.dart';
+import 'services/agent/plan.dart';
+import 'services/agent/preview_tools.dart';
 import 'services/agent/terminal_tools.dart';
 import 'services/terminal/terminal_bridge.dart';
 import 'services/app_settings.dart';
@@ -94,12 +98,82 @@ class AppServices {
   final terminalBridge = TerminalBridge();
   late final SkillHub skillHub;
   DeviceFileToolkit? deviceFiles; // set in create(); used when enabled in Settings
+  late final LocalUndoLog localUndo; // undo for terminal / device-file edits
+
+  /// The repo workspace behind the agent (checkpoints / undo), if one is active.
+  AgentWorkspace? get workspace => settings.toolsEnabled ? _ws : null;
+
+  // ---- undo across the repo workspace and local files -------------------------
+
+  /// All undo points (repo steps and device/terminal file steps), oldest first.
+  List<Checkpoint> allCheckpoints() {
+    final l = <Checkpoint>[...?workspace?.checkpoints, ...localUndo.checkpoints];
+    l.sort((a, b) => a.at.compareTo(b.at));
+    return l;
+  }
+
+  Checkpoint? _checkpoint(String id) {
+    for (final c in allCheckpoints()) {
+      if (c.id == id) return c;
+    }
+    return null;
+  }
+
+  /// First repo checkpoint taken at or after [c] (what a repo undo must go back to).
+  Checkpoint? _repoCheckpointFrom(Checkpoint c) {
+    final w = workspace;
+    if (w == null) return null;
+    for (final x in w.checkpoints) {
+      if (!x.at.isBefore(c.at)) return x;
+    }
+    return null;
+  }
+
+  bool undoTouchesRemote(String id) {
+    final c = _checkpoint(id);
+    final r = c == null ? null : _repoCheckpointFrom(c);
+    final pushed = c != null && localUndo.pushes.any((x) => !x.at.isBefore(c.at));
+    return pushed || (r != null && (workspace?.undoTouchesRemote(r.id) ?? false));
+  }
+
+  /// Moves a branch back after a shell `git push`, unless someone pushed since.
+  Future<String?> _undoPush(PushRecord r) async {
+    final g = gh;
+    if (g == null) return 'GitHub is not connected';
+    final repo = RepoRef(r.owner, r.repo);
+    final now = await g.branchSha(repo, r.branch);
+    if (now != r.after) return 'the branch changed since (someone else pushed)';
+    await g.resetBranch(repo, r.branch, r.before);
+    final w = _ws;
+    if (w != null && w.repo.owner == r.owner && w.repo.repo == r.repo && w.branch == r.branch) {
+      if (w.headSha == r.after) w.headSha = r.before;
+      w.tree = null;
+    }
+    return null;
+  }
+
+  /// Undoes [id] and everything after it, in the repo and on the device.
+  Future<String> undo(String id) async {
+    final c = _checkpoint(id);
+    if (c == null) return 'That restore point is no longer available.';
+    final parts = <String>[];
+    // Local side first: it also moves back branches pushed by the shell, which
+    // the repo undo needs to see as unchanged.
+    final local = await localUndo.restoreFrom(c.at);
+    if (local.isNotEmpty) parts.add(local);
+    final r = _repoCheckpointFrom(c);
+    if (r != null) {
+      parts.add(await workspace!.restore(r.id));
+    }
+    return parts.isEmpty ? 'Nothing to undo.' : parts.join(' ');
+  }
 
   /// Null when no tool source is available (no repo selected and device
   /// file access switched off).
   AgentRunner? makeAgent(ChatMode mode) {
     final kits = <Toolkit>[];
     final g = gh, sel = selection;
+    AgentWorkspace? active;
     if (settings.toolsEnabled && g != null && sel != null) {
       final key = sel.encode();
       if (_ws == null || _wsKey != key || !identical(_wsGh, g)) {
@@ -107,22 +181,33 @@ class AppServices {
         _wsKey = key;
         _wsGh = g;
       }
-      kits.add(AgentToolkit(_ws!));
+      active = _ws;
+      kits.add(AgentToolkit(_ws!, autoVerify: () => settings.autoVerify));
+      kits.add(PreviewToolkit(() => active, delivery));
     }
-    if (settings.deviceFilesEnabled && deviceFiles != null) kits.add(deviceFiles!);
-    if (settings.terminalEnabled) kits.add(TerminalToolkit(terminalBridge, settings));
-    if (settings.browserEnabled) kits.add(BrowserToolkit(settings));
+    if (settings.deviceFilesEnabled && deviceFiles != null) {
+      kits.add(UndoToolkit(deviceFiles!, localUndo, deviceFiles!.undoPlan));
+    }
+    if (settings.terminalEnabled) {
+      kits.add(UndoToolkit(TerminalToolkit(terminalBridge, settings), localUndo,
+          (n, a) => TerminalToolkit.undoPlan(terminalBridge, n, a)));
+    }
+    if (settings.browserEnabled) kits.add(BrowserToolkit(settings, terminalBridge.http));
     // Always available, so Build / Autonomous can hand results back in chat.
     kits.add(DeliveryToolkit(delivery, allowDevicePaths: settings.deviceFilesEnabled));
+    // The visible checklist card.
+    kits.add(PlanToolkit());
     final auto = mode == ChatMode.autonomous;
     return AgentRunner(
       router: router,
       toolkit: kits.length == 1 ? kits.first : ToolkitSet(kits),
-      maxSteps: auto ? 100 : 25,
+      maxSteps: auto ? 100 : 40,
       maxDuration: auto ? const Duration(minutes: 45) : null,
+      beginRun: active == null ? null : () => active!.beginRun(),
+      notices: PreviewReports.instance.takeLateNote,
       modeNote: auto
-          ? 'Mode: AUTONOMOUS. Work on your own until the task is finished. Do not ask questions unless you are truly blocked; make reasonable assumptions and state them. Go through every step needed, verify results, then finish with a short summary. Actions that need approval wait for the user; never retry a denied action.'
-          : 'Mode: BUILD. Work through the task step by step until it is complete: inspect first, make the change, then verify it. End with a short summary of what changed and what is left.',
+          ? 'Mode: AUTONOMOUS. Work on your own until the task is finished. Do not ask questions unless you are truly blocked; make reasonable assumptions and state them. Go through every step needed, verify results (build, then fix errors yourself), then finish with a short summary. Actions that need approval wait for the user; never retry a denied action.'
+          : 'Mode: BUILD. Work through the task step by step until it is complete: inspect first, make the change, then verify it (a failed build is yours to fix). End with a short summary of what changed and what is left.',
     );
   }
 
@@ -136,7 +221,26 @@ class AppServices {
         store: a.skills);
     await a.skillHub.load();
     final docs = await getApplicationDocumentsDirectory();
+    // Terminal: secrets, GitHub client and the /storage switch are looked up
+    // lazily so token / setting changes apply immediately.
+    a.terminalBridge
+      ..secrets = (name) async => name == 'github' ? a.store.githubToken() : null
+      ..github = (() => a.gh)
+      ..storageAllowed = (() => a.settings.terminalStorage);
     a.deviceFiles = DeviceFileToolkit('${docs.path}/fs_trash');
+    a.localUndo = LocalUndoLog('${docs.path}/undo_store')
+      ..stopJobs = () async => a.terminalBridge.jobs.killAll()
+      ..undoPush = a._undoPush;
+    await a.localUndo.init();
+    // A `git push` made by the shell is remembered so Undo can move the branch back.
+    a.terminalBridge.onPush = (owner, repo, branch, before, after) {
+      a.localUndo.recordPush(owner, repo, branch, before, after);
+      final w = a._ws;
+      if (w != null && w.repo.owner == owner && w.repo.repo == repo && w.branch == branch) {
+        if (w.headSha == before) w.headSha = after; // keep the repo undo's idea of the head current
+        w.tree = null;
+      }
+    };
     unawaited(a.deviceFiles!.purgeOldTrash());
     a.providers = await ProviderRegistry(registryUrl).load();
     a.router = RouterService(client: a.client, chain: () => a.chain);
@@ -300,6 +404,7 @@ class _BootstrapAppState extends State<BootstrapApp> {
   Widget build(BuildContext context) => MaterialApp(
         title: 'AI Dev Hub',
         debugShowCheckedModeBanner: false,
+        scrollBehavior: const IosScrollBehavior(),
         theme: buildTheme(Brightness.light),
         darkTheme: buildTheme(Brightness.dark),
         home: FutureBuilder<AppServices>(
@@ -326,7 +431,7 @@ class _StartupView extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.all(28),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.auto_awesome_rounded, size: 46, color: Theme.of(context).colorScheme.primary),
+              const AiSparkle(size: 46, active: true),
               const SizedBox(height: 16),
               Text(error == null ? 'Starting AI Dev Hub…' : 'Startup needs attention', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 12),
@@ -353,6 +458,7 @@ class HubApp extends StatelessWidget {
           title: 'AI Dev Hub',
           debugShowCheckedModeBanner: false,
           themeMode: app.settings.themeMode,
+          scrollBehavior: const IosScrollBehavior(),
           theme: buildTheme(Brightness.light),
           darkTheme: buildTheme(Brightness.dark),
           builder: (ctx, child) => MediaQuery(
@@ -675,6 +781,15 @@ class _HomeShellState extends State<HomeShell> {
           onPickPhoto: _attachPhoto,
           toolsEnabled: s.toolsEnabled || s.deviceFilesEnabled || s.terminalEnabled || s.browserEnabled,
           agentFactory: app.makeAgent,
+          checkpoints: app.allCheckpoints,
+          undoTouchesRemote: app.undoTouchesRemote,
+          onUndo: (id) async {
+            try {
+              return await app.undo(id);
+            } catch (e) {
+              return 'Undo failed: $e';
+            }
+          },
         ),
       ),
     );

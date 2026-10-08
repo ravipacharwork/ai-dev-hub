@@ -1,6 +1,6 @@
 """Patch the generated Android project with app permissions only.
 
-The app uses an inbuilt app-private terminal; no Termux, Shizuku, ADB bridge,
+The app uses an in-app shell (real /system/bin/sh inside the app sandbox); no Termux, Shizuku, ADB bridge,
 extra native activity or external terminal permission is required.
 """
 

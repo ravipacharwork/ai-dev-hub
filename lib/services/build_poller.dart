@@ -23,8 +23,73 @@ class BuildStatus {
   final String? runUrl; // html_url for "View on GitHub"
   final List<BuildArtifact> artifacts;
   final String? detail;
+  final String? failedStep; // "job > step" that broke the build
+  final String? failureLog; // trimmed log the agent reads to fix the build
   const BuildStatus(this.phase,
-      {this.runUrl, this.artifacts = const [], this.detail});
+      {this.runUrl,
+      this.artifacts = const [],
+      this.detail,
+      this.failedStep,
+      this.failureLog});
+
+  bool get isFinal =>
+      phase == BuildPhase.succeeded ||
+      phase == BuildPhase.failed ||
+      phase == BuildPhase.timedOut;
+
+  /// What the model gets back from trigger_build / commit_changes.
+  String get summaryForModel => switch (phase) {
+        BuildPhase.succeeded =>
+          'BUILD SUCCEEDED.${artifacts.isEmpty ? '' : ' Artifacts: ${artifacts.map((a) => a.name).join(', ')}.'}${runUrl == null ? '' : ' Run: $runUrl'}',
+        BuildPhase.failed =>
+          'BUILD FAILED at: ${failedStep ?? 'unknown step'}.${runUrl == null ? '' : ' Run: $runUrl'}\n--- build log (trimmed) ---\n${failureLog ?? detail ?? '(no log available)'}',
+        BuildPhase.timedOut =>
+          'The build did not finish in the wait window.${runUrl == null ? '' : ' Run: $runUrl'} Tell the user; do not retry blindly.',
+        _ => 'Build still in progress.',
+      };
+}
+
+/// Replayable view of a build: late listeners (the chat card) first receive
+/// everything that already happened, then live updates. [finished] completes
+/// with the final status so the agent can wait for the result.
+class BuildTracker {
+  final _events = <BuildStatus>[];
+  final _ctrl = StreamController<BuildStatus>.broadcast(sync: true);
+  final _done = Completer<BuildStatus>();
+
+  Future<BuildStatus> get finished => _done.future;
+
+  BuildTracker.follow(Stream<BuildStatus> source) {
+    void emit(BuildStatus s) {
+      _events.add(s);
+      _ctrl.add(s);
+      if (s.isFinal && !_done.isCompleted) _done.complete(s);
+    }
+
+    source.listen(
+      emit,
+      onError: (Object e) =>
+          emit(BuildStatus(BuildPhase.failed, detail: 'Could not run the build: $e')),
+      onDone: () {
+        if (!_done.isCompleted) {
+          emit(const BuildStatus(BuildPhase.failed, detail: 'Build stopped unexpectedly.'));
+        }
+        _ctrl.close();
+      },
+    );
+  }
+
+  Stream<BuildStatus> get stream => Stream<BuildStatus>.multi((c) {
+        for (final e in _events) {
+          c.add(e);
+        }
+        if (_ctrl.isClosed) {
+          c.close();
+          return;
+        }
+        final sub = _ctrl.stream.listen(c.add, onDone: c.close);
+        c.onCancel = sub.cancel;
+      });
 }
 
 /// Usage:
@@ -95,8 +160,12 @@ class BuildPoller {
 
         final ok = run['conclusion'] == 'success';
         if (!ok) {
+          final d = await failureDigest(repo, runId);
           yield BuildStatus(BuildPhase.failed,
-              runUrl: runUrl, detail: 'Conclusion: ${run['conclusion']}');
+              runUrl: runUrl,
+              detail: d.step ?? 'Conclusion: ${run['conclusion']}',
+              failedStep: d.step,
+              failureLog: d.log);
           return;
         }
         yield BuildStatus(BuildPhase.succeeded,
@@ -107,6 +176,57 @@ class BuildPoller {
       }
     }
     yield BuildStatus(BuildPhase.timedOut, runUrl: runUrl);
+  }
+
+  /// Finds the failed job/step of a run and returns the useful end of its log.
+  Future<({String? step, String? log})> failureDigest(RepoRef repo, int runId) async {
+    try {
+      final jobs = await gh.runJobs(repo, runId);
+      Map<String, dynamic>? bad;
+      for (final j in jobs) {
+        if (j['conclusion'] == 'failure') {
+          bad = j;
+          break;
+        }
+      }
+      bad ??= jobs.isNotEmpty ? jobs.first : null;
+      if (bad == null) return (step: null, log: null);
+      var step = '${bad['name']}';
+      for (final s in (bad['steps'] as List? ?? const [])) {
+        if (s is Map && s['conclusion'] == 'failure') {
+          step = '${bad['name']} > ${s['name']}';
+          break;
+        }
+      }
+      final raw = await gh.jobLog(repo, bad['id'] as int);
+      return (step: step, log: trimLog(raw));
+    } catch (e) {
+      return (step: null, log: 'Could not fetch the log: $e');
+    }
+  }
+
+  /// Strips ANSI codes and timestamps; keeps early error lines plus the tail,
+  /// where build tools print their summary.
+  static String trimLog(String raw, {int maxChars = 6000}) {
+    final ansi = RegExp(r'\x1B\[[0-9;]*[A-Za-z]');
+    final ts = RegExp(r'^\d{4}-\d\d-\d\dT[\d:.]+Z ');
+    final lines = [
+      for (final l in raw.split('\n')) l.replaceAll(ansi, '').replaceFirst(ts, '').trimRight()
+    ];
+    final hit = RegExp(
+        r'error|failed|exception|FAILURE|could not|cannot find|not found|undefined|unexpected',
+        caseSensitive: false);
+    const tailN = 70;
+    final cut = lines.length > tailN ? lines.length - tailN : 0;
+    final early = <String>[];
+    for (var i = 0; i < cut && early.length < 25; i++) {
+      if (hit.hasMatch(lines[i])) early.add(lines[i]);
+    }
+    final out = [
+      if (early.isNotEmpty) ...['--- earlier error lines ---', ...early, '--- last lines ---'],
+      ...lines.sublist(cut),
+    ].join('\n');
+    return out.length > maxChars ? '...${out.substring(out.length - maxChars)}' : out;
   }
 
   Future<Map<String, dynamic>?> _findRun(

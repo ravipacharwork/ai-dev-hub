@@ -16,10 +16,12 @@ class AppSettings extends ChangeNotifier {
   String? workspaceUri; // SAF tree URI
   bool toolsEnabled = false; // let the model use repo tools (agent mode)
   bool terminalEnabled = true; // background-only built-in terminal_run tool
+  bool terminalStorage = false; // expose phone storage as /storage in the terminal
   bool terminalConfirm = false; // safe app-private workspace runs silently
   bool deviceFilesEnabled = false; // let the model manage files on the device
   bool browserEnabled = false; // in-app browser automation tools
   bool browserConfirm = true; // ask before open / click / type
+  bool autoVerify = true; // commit -> build -> read errors -> fix (agent loop)
   bool powerMode = false; // unlocks advanced, user-approved workflows
   String routingProfile = 'auto'; // auto, fast, cheap, coding
 
@@ -38,9 +40,11 @@ class AppSettings extends ChangeNotifier {
     terminalEnabled = _p.getBool('terminalEnabled') ?? true;
     // The terminal is strictly app-private and sandboxed; keep it silent for
     // existing installs too. Destructive commands remain blocked in the tool.
-    terminalConfirm = false;
+    terminalStorage = _p.getBool('terminalStorage') ?? false;
+    terminalConfirm = _p.getBool('terminalConfirm') ?? false;
     browserEnabled = _p.getBool('browserEnabled') ?? false;
     browserConfirm = _p.getBool('browserConfirm') ?? true;
+    autoVerify = _p.getBool('autoVerify') ?? true;
     powerMode = _p.getBool('powerMode') ?? false;
     routingProfile = _p.getString('routingProfile') ?? 'auto';
     notifyListeners();
@@ -56,7 +60,9 @@ class AppSettings extends ChangeNotifier {
   void setTerminalEnabled(bool v) { terminalEnabled = v; _p.setBool('terminalEnabled', v); _done(); }
   void setBrowserEnabled(bool v) { browserEnabled = v; _p.setBool('browserEnabled', v); _done(); }
   void setBrowserConfirm(bool v) { browserConfirm = v; _p.setBool('browserConfirm', v); _done(); }
+  void setTerminalStorage(bool v) { terminalStorage = v; _p.setBool('terminalStorage', v); _done(); }
   void setTerminalConfirm(bool v) { terminalConfirm = v; _p.setBool('terminalConfirm', v); _done(); }
+  void setAutoVerify(bool v) { autoVerify = v; _p.setBool('autoVerify', v); _done(); }
   void setPowerMode(bool v) { powerMode = v; _p.setBool('powerMode', v); _done(); }
   void setRoutingProfile(String v) { routingProfile = v; _p.setString('routingProfile', v); _done(); }
   void setWorkspace(String? uri) {

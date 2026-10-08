@@ -1,40 +1,53 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/haptics.dart';
+import '../../core/ios_widgets.dart';
 import '../../core/models.dart';
-import '../../core/theme.dart';
 import '../../services/openai_compatible_client.dart';
 import '../../services/router_service.dart';
 import '../../services/secure_store.dart';
 
+/// API keys and providers, in Apple's inset-grouped style.
 class ProvidersScreen extends StatelessWidget {
   final List<ProviderDef> providers;
   final SecureStore store;
   final OpenAICompatibleClient client;
   final Map<String, ProviderStats> Function() stats;
   final Future<void> Function()? onChanged;
-  const ProvidersScreen({super.key, required this.providers, required this.store, required this.client, required this.stats, this.onChanged});
+  const ProvidersScreen({
+    super.key,
+    required this.providers,
+    required this.store,
+    required this.client,
+    required this.stats,
+    this.onChanged,
+  });
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('OmniRoute Control Panel')),
-        body: ListView(padding: const EdgeInsets.all(12), children: [
-          Glass(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Icon(Icons.hub_rounded, color: Theme.of(context).colorScheme.primary),
-            const SizedBox(height: 8),
-            const Text('OmniRoute is your routing brain. All providers and key pools are managed here, with health-aware fallback and independent rate-limit cooldowns.'),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              icon: const Icon(Icons.dashboard_customize_rounded),
-              label: const Text('Manage OmniRoute key pools'),
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => OmniRouteKeysScreen(providers: providers, store: store, client: client, onChanged: onChanged))),
-            ),
-          ])),
-          const SizedBox(height: 12),
+  Widget build(BuildContext context) => IosPage(
+        title: 'API Keys',
+        children: [
+          IosSection(
+            footer:
+                'OmniRoute picks the fastest healthy provider and cools down only the key that failed. Keys stay in encrypted device storage.',
+            children: [
+              IosTile(
+                icon: CupertinoIcons.square_stack_3d_up_fill,
+                iconColor: IosColors.purple,
+                title: 'Key pools',
+                subtitle: 'Add many keys per provider',
+                chevron: true,
+                onTap: () => Navigator.of(context).push(CupertinoPageRoute(
+                    builder: (_) => OmniRouteKeysScreen(
+                        providers: providers, store: store, client: client, onChanged: onChanged))),
+              ),
+            ],
+          ),
           for (final p in providers)
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: _ProviderTile(def: p, store: store, client: client, stats: () => stats()[p.id])),
+            _ProviderSection(def: p, store: store, client: client, stats: () => stats()[p.id]),
         ],
-      ));
+      );
 }
 
 class OmniRouteKeysScreen extends StatefulWidget {
@@ -42,8 +55,15 @@ class OmniRouteKeysScreen extends StatefulWidget {
   final SecureStore store;
   final OpenAICompatibleClient client;
   final Future<void> Function()? onChanged;
-  const OmniRouteKeysScreen({super.key, required this.providers, required this.store, required this.client, this.onChanged});
-  @override State<OmniRouteKeysScreen> createState() => _OmniRouteKeysScreenState();
+  const OmniRouteKeysScreen({
+    super.key,
+    required this.providers,
+    required this.store,
+    required this.client,
+    this.onChanged,
+  });
+  @override
+  State<OmniRouteKeysScreen> createState() => _OmniRouteKeysScreenState();
 }
 
 class _OmniRouteKeysScreenState extends State<OmniRouteKeysScreen> {
@@ -57,100 +77,288 @@ class _OmniRouteKeysScreenState extends State<OmniRouteKeysScreen> {
   @override
   void initState() {
     super.initState();
-    () async { _providerId = widget.providers.isEmpty ? null : widget.providers.first.id; await _loadKeys(); if (mounted) setState(() => _ready = true); }();
+    () async {
+      _providerId = widget.providers.isEmpty ? null : widget.providers.first.id;
+      await _loadKeys();
+      if (mounted) setState(() => _ready = true);
+    }();
   }
-  @override void dispose() { _input.dispose(); super.dispose(); }
-  Future<void> _loadKeys() async { _keys..clear()..addAll(_providerId == null ? const [] : await widget.store.apiKeys(_providerId!)); }
-  Future<void> _save() async { if (_providerId != null) { await widget.store.setApiKeys(_providerId!, _keys); await widget.onChanged?.call(); } }
-  Future<void> _changeProvider(String? id) async { if (id == null || id == _providerId) return; setState(() { _providerId = id; _ready = false; _health.clear(); }); await _loadKeys(); if (mounted) setState(() => _ready = true); }
+
+  @override
+  void dispose() {
+    _input.dispose();
+    super.dispose();
+  }
+
+  ProviderDef? get _def {
+    final m = widget.providers.where((p) => p.id == _providerId).toList();
+    return m.isEmpty ? null : m.first;
+  }
+
+  Future<void> _loadKeys() async {
+    _keys
+      ..clear()
+      ..addAll(_providerId == null ? const [] : await widget.store.apiKeys(_providerId!));
+  }
+
+  Future<void> _save() async {
+    if (_providerId != null) {
+      await widget.store.setApiKeys(_providerId!, _keys);
+      await widget.onChanged?.call();
+    }
+  }
+
+  Future<void> _changeProvider(String id) async {
+    if (id == _providerId) return;
+    setState(() {
+      _providerId = id;
+      _ready = false;
+      _health.clear();
+    });
+    await _loadKeys();
+    if (mounted) setState(() => _ready = true);
+  }
+
   Future<void> _testAll() async {
-    final matches = widget.providers.where((p) => p.id == _providerId).toList();
-    final def = matches.isEmpty ? null : matches.first;
+    final def = _def;
     if (def == null || _keys.isEmpty || _testing) return;
-    setState(() { _testing = true; _health.clear(); });
-    for (var i = 0; i < _keys.length; i++) {
-      final key = _keys[i];
+    setState(() {
+      _testing = true;
+      _health.clear();
+    });
+    for (final key in List<String>.from(_keys)) {
       try {
         final sw = Stopwatch()..start();
-        await widget.client.listModels(Endpoint(providerId: def.id, baseUrl: def.baseUrl, apiKey: key, model: def.models.first));
+        await widget.client.listModels(
+            Endpoint(providerId: def.id, baseUrl: def.baseUrl, apiKey: key, model: def.models.first));
         _health[key] = 'Online · ${sw.elapsedMilliseconds} ms';
-      } catch (e) { _health[key] = 'Unavailable'; }
+      } catch (e) {
+        _health[key] = 'Unavailable';
+      }
       if (mounted) setState(() {});
     }
     if (mounted) setState(() => _testing = false);
   }
+
   Future<void> _add() async {
     final value = _input.text.trim();
     if (value.isEmpty || _keys.contains(value)) return;
-    setState(() { _keys.add(value); _input.clear(); });
+    Haptics.copy();
+    setState(() {
+      _keys.add(value);
+      _input.clear();
+    });
     await _save();
   }
 
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('OmniRoute key panel')),
-        body: !_ready ? const Center(child: CircularProgressIndicator()) : ListView(padding: const EdgeInsets.all(12), children: [
-          Glass(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Provider key pool', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(value: _providerId, decoration: const InputDecoration(labelText: 'Provider'), items: [for (final p in widget.providers) DropdownMenuItem(value: p.id, child: Text(p.name))], onChanged: _changeProvider),
-            const SizedBox(height: 6),
-            const Text('Keys are stored in encrypted device storage. Add as many keys as you need—there is no artificial per-provider limit. OmniRoute tries healthy keys independently and cools down only the key that failed.'),
-            const SizedBox(height: 14),
-            TextField(controller: _input, obscureText: true, autocorrect: false, enableSuggestions: false,
-              decoration: InputDecoration(labelText: 'Add API key', suffixIcon: IconButton(icon: const Icon(Icons.add_rounded), onPressed: _add)),
-              onSubmitted: (_) => _add()),
-            const SizedBox(height: 12),
-            Row(children: [
-              FilledButton.tonalIcon(icon: _testing ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.health_and_safety_outlined), label: Text(_testing ? 'Testing…' : 'Test all keys'), onPressed: _testing || _keys.isEmpty ? null : _testAll),
-              const SizedBox(width: 10),
-              Text('${_keys.length} key${_keys.length == 1 ? '' : 's'} · no limit', style: Theme.of(context).textTheme.bodySmall),
-            ]),
-            const SizedBox(height: 8),
-            if (_keys.isEmpty) const Text('No keys added yet. Add one or more provider keys above.')
-            else for (var i = 0; i < _keys.length; i++) ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(child: Text('${i + 1}')),
-              title: Text('••••••••${_keys[i].length > 6 ? _keys[i].substring(_keys[i].length - 6) : ''}'),
-              subtitle: Text(_health[_keys[i]] ?? 'Fallback slot ${i + 1}'),
-              trailing: IconButton(icon: const Icon(Icons.delete_outline_rounded), onPressed: () async { setState(() => _keys.removeAt(i)); await _save(); }),
+  void _pickProvider() {
+    showCupertinoModalPopup<void>(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: const Text('Provider'),
+        actions: [
+          for (final p in widget.providers)
+            CupertinoActionSheetAction(
+              isDefaultAction: p.id == _providerId,
+              onPressed: () {
+                Navigator.pop(ctx);
+                _changeProvider(p.id);
+              },
+              child: Text(p.name),
             ),
-          ])),
-        ]),
-      );
-}
-
-class _ProviderTile extends StatefulWidget {
-  final ProviderDef def; final SecureStore store; final OpenAICompatibleClient client; final ProviderStats? Function() stats;
-  const _ProviderTile({required this.def, required this.store, required this.client, required this.stats});
-  @override State<_ProviderTile> createState() => _ProviderTileState();
-}
-
-class _ProviderTileState extends State<_ProviderTile> {
-  final _key = TextEditingController(); final _base = TextEditingController();
-  bool _show = false, _testing = false, _loaded = false; String? _result; bool _ok = false;
-  bool get _isCustom => widget.def.id == 'custom';
-  @override void initState() { super.initState(); () async { final keys = await widget.store.apiKeys(widget.def.id); _key.text = keys.isEmpty ? '' : keys.first; _base.text = await widget.store.baseUrl(widget.def.id) ?? widget.def.baseUrl; if (mounted) setState(() => _loaded = true); }(); }
-  @override void dispose() { _key.dispose(); _base.dispose(); super.dispose(); }
-  Future<void> _save() async { await widget.store.setApiKeys(widget.def.id, _key.text.trim().isEmpty ? [] : [_key.text.trim()]); if (_isCustom) await widget.store.setBaseUrl(widget.def.id, _base.text.trim()); }
-  Future<void> _test() async {
-    Haptics.toggle(); setState(() { _testing = true; _result = null; }); await _save();
-    final base = _base.text.trim(); if (base.isEmpty) { setState(() { _testing = false; _ok = false; _result = 'Enter a base URL'; }); return; }
-    try { final sw = Stopwatch()..start(); final models = await widget.client.listModels(Endpoint(providerId: widget.def.id, baseUrl: base, apiKey: _key.text.trim(), model: 'test')); _ok = true; _result = '${sw.elapsedMilliseconds} ms · ${models.length} models'; Haptics.copy(); }
-    on LlmError catch (e) { _ok = false; _result = e.status == 401 || e.status == 403 ? 'Invalid key (${e.status})' : e.message; Haptics.error(); }
-    catch (e) { _ok = false; _result = '$e'; Haptics.error(); }
-    if (mounted) setState(() => _testing = false);
+        ],
+        cancelButton: CupertinoActionSheetAction(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+      ),
+    );
   }
+
   @override
   Widget build(BuildContext context) {
-    final st = widget.stats();
-    return Glass(child: !_loaded ? const SizedBox(height: 48) : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [Expanded(child: Text(widget.def.name, style: Theme.of(context).textTheme.titleMedium)), if (widget.def.freeTier) Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.green.withOpacity(.14), borderRadius: BorderRadius.circular(99)), child: const Text('FREE TIER', style: TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.bold)))]), const SizedBox(height: 8),
-      if (_isCustom) ...[TextField(controller: _base, keyboardType: TextInputType.url, autocorrect: false, decoration: const InputDecoration(labelText: 'Base URL', hintText: 'http://192.168.1.10:20128/v1')), const SizedBox(height: 8)],
-      TextField(controller: _key, obscureText: !_show, autocorrect: false, enableSuggestions: false, decoration: InputDecoration(labelText: widget.def.requiresKey ? 'API key' : 'API key (optional)', suffixIcon: IconButton(icon: Icon(_show ? Icons.visibility_off_rounded : Icons.visibility_rounded), onPressed: () => setState(() => _show = !_show))), onEditingComplete: _save),
-      const SizedBox(height: 10), Row(children: [FilledButton.tonal(onPressed: _testing ? null : _test, child: _testing ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Test connection')), const SizedBox(width: 10), if (_result != null) Expanded(child: Text(_ok ? '✓ $_result' : '✗ $_result', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: _ok ? Colors.green : Theme.of(context).colorScheme.error, fontSize: 12))) ]),
-      if (st != null && st.requests + st.errors > 0) ...[const Divider(height: 20), Wrap(spacing: 14, runSpacing: 4, children: [_stat(context, 'Latency', '${st.lastLatencyMs} ms'), _stat(context, 'Requests', '${st.requests}'), _stat(context, 'Errors', '${st.errors}'), _stat(context, 'Tokens in', '${st.promptTokens}'), _stat(context, 'Tokens out', '${st.completionTokens}')])],
-    ]));
+    if (!_ready) {
+      return const IosPage(title: 'Key Pool', children: [
+        Padding(padding: EdgeInsets.only(top: 80), child: Center(child: CupertinoActivityIndicator(radius: 14))),
+      ]);
+    }
+    return IosPage(
+      title: 'Key Pool',
+      children: [
+        IosSection(header: 'Provider', children: [
+          IosTile(
+            icon: CupertinoIcons.cloud_fill,
+            iconColor: IosColors.blue,
+            title: 'Provider',
+            value: _def?.name ?? 'None',
+            chevron: true,
+            onTap: _pickProvider,
+          ),
+        ]),
+        IosSection(
+          header: 'Add key',
+          footer: 'No limit per provider. Keys are tried independently, so one rate-limited key never blocks the rest.',
+          children: [
+            IosField(
+              controller: _input,
+              placeholder: 'Paste API key',
+              obscure: true,
+              mono: true,
+              suffix: CupertinoButton(
+                padding: const EdgeInsets.only(right: 12),
+                minSize: 30,
+                onPressed: _add,
+                child: const Icon(CupertinoIcons.add_circled_solid, size: 26),
+              ),
+              onChanged: null,
+            ),
+          ],
+        ),
+        IosSection(
+          header: '${_keys.length} key${_keys.length == 1 ? '' : 's'}',
+          children: _keys.isEmpty
+              ? [const IosTile(title: 'No keys yet', subtitle: 'Add one above to get started')]
+              : [
+                  for (var i = 0; i < _keys.length; i++)
+                    IosTile(
+                      icon: CupertinoIcons.lock_fill,
+                      iconColor: _health[_keys[i]] == null
+                          ? IosColors.gray
+                          : (_health[_keys[i]]!.startsWith('Online') ? IosColors.green : IosColors.red),
+                      title: '••••••••${_keys[i].length > 6 ? _keys[i].substring(_keys[i].length - 6) : ''}',
+                      subtitle: _health[_keys[i]] ?? 'Slot ${i + 1}',
+                      trailing: CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        minSize: 30,
+                        onPressed: () async {
+                          Haptics.toggle();
+                          setState(() => _keys.removeAt(i));
+                          await _save();
+                        },
+                        child: const Icon(CupertinoIcons.minus_circle_fill, color: IosColors.red, size: 24),
+                      ),
+                    ),
+                ],
+        ),
+        IosButton(_testing ? 'Testing…' : 'Test all keys',
+            icon: CupertinoIcons.waveform_path_ecg,
+            tinted: true,
+            onPressed: _testing || _keys.isEmpty ? null : _testAll),
+      ],
+    );
   }
-  Widget _stat(BuildContext c, String k, String v) => Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [Text(k, style: Theme.of(c).textTheme.labelSmall?.copyWith(color: Theme.of(c).hintColor)), Text(v, style: Theme.of(c).textTheme.titleSmall)]);
+}
+
+class _ProviderSection extends StatefulWidget {
+  final ProviderDef def;
+  final SecureStore store;
+  final OpenAICompatibleClient client;
+  final ProviderStats? Function() stats;
+  const _ProviderSection({required this.def, required this.store, required this.client, required this.stats});
+  @override
+  State<_ProviderSection> createState() => _ProviderSectionState();
+}
+
+class _ProviderSectionState extends State<_ProviderSection> {
+  final _key = TextEditingController();
+  final _base = TextEditingController();
+  bool _show = false, _testing = false, _loaded = false, _ok = false;
+  String? _result;
+  bool get _isCustom => widget.def.id == 'custom';
+
+  @override
+  void initState() {
+    super.initState();
+    () async {
+      final keys = await widget.store.apiKeys(widget.def.id);
+      _key.text = keys.isEmpty ? '' : keys.first;
+      _base.text = await widget.store.baseUrl(widget.def.id) ?? widget.def.baseUrl;
+      if (mounted) setState(() => _loaded = true);
+    }();
+  }
+
+  @override
+  void dispose() {
+    _key.dispose();
+    _base.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    await widget.store.setApiKeys(widget.def.id, _key.text.trim().isEmpty ? [] : [_key.text.trim()]);
+    if (_isCustom) await widget.store.setBaseUrl(widget.def.id, _base.text.trim());
+  }
+
+  Future<void> _test() async {
+    Haptics.toggle();
+    setState(() {
+      _testing = true;
+      _result = null;
+    });
+    await _save();
+    final base = _base.text.trim();
+    if (base.isEmpty) {
+      setState(() {
+        _testing = false;
+        _ok = false;
+        _result = 'Enter a base URL';
+      });
+      return;
+    }
+    try {
+      final sw = Stopwatch()..start();
+      final models = await widget.client.listModels(
+          Endpoint(providerId: widget.def.id, baseUrl: base, apiKey: _key.text.trim(), model: 'test'));
+      _ok = true;
+      _result = '${sw.elapsedMilliseconds} ms · ${models.length} models';
+      Haptics.copy();
+    } on LlmError catch (e) {
+      _ok = false;
+      _result = e.status == 401 || e.status == 403 ? 'Invalid key (${e.status})' : e.message;
+      Haptics.error();
+    } catch (e) {
+      _ok = false;
+      _result = '$e';
+      Haptics.error();
+    }
+    if (mounted) setState(() => _testing = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_loaded) return const SizedBox(height: 48);
+    final st = widget.stats();
+    final stats = st != null && st.requests + st.errors > 0
+        ? '${st.lastLatencyMs} ms · ${st.requests} requests · ${st.errors} errors · ${st.promptTokens} in / ${st.completionTokens} out'
+        : null;
+    return IosSection(
+      header: widget.def.freeTier ? '${widget.def.name} · free tier' : widget.def.name,
+      footer: stats,
+      children: [
+        if (_isCustom)
+          IosField(controller: _base, placeholder: 'Base URL, e.g. http://192.168.1.10:20128/v1'),
+        IosField(
+          controller: _key,
+          placeholder: widget.def.requiresKey ? 'API key' : 'API key (optional)',
+          obscure: !_show,
+          mono: true,
+          suffix: CupertinoButton(
+            padding: const EdgeInsets.only(right: 12),
+            minSize: 30,
+            onPressed: () => setState(() => _show = !_show),
+            child: Icon(_show ? CupertinoIcons.eye_slash_fill : CupertinoIcons.eye_fill,
+                size: 20, color: IosColors.secondary(context)),
+          ),
+        ),
+        IosTile(
+          title: _testing ? 'Testing…' : 'Test connection',
+          subtitle: _result == null ? null : (_ok ? 'Connected · $_result' : _result),
+          trailing: _testing
+              ? const CupertinoActivityIndicator()
+              : (_result == null
+                  ? null
+                  : Icon(_ok ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.exclamationmark_circle_fill,
+                      color: _ok ? IosColors.green : IosColors.red)),
+          onTap: _testing ? null : _test,
+        ),
+      ],
+    );
+  }
 }

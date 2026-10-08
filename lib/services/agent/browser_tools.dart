@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../app_settings.dart';
+import '../http_runner.dart';
 import '../browser_session.dart';
 import 'agent_tools.dart';
 import 'package:path/path.dart' as p;
@@ -12,7 +13,8 @@ import 'package:path_provider/path_provider.dart';
 /// data, and open/click/type ask for approval unless the user turned that off.
 class BrowserToolkit implements Toolkit {
   final AppSettings settings;
-  BrowserToolkit(this.settings);
+  final HttpRunner? http; // shared runner: custom headers + secret placeholders
+  BrowserToolkit(this.settings, [this.http]);
   final _b = BrowserSession.instance;
 
   static Map<String, dynamic> _p(String d, [String t = 'string']) => {'type': t, 'description': d};
@@ -47,11 +49,12 @@ class BrowserToolkit implements Toolkit {
             {'milliseconds': _p('Wait time, 100-5000', 'integer')}),
         _fn('browser_screenshot', 'Capture the current page as a PNG for visual/UI inspection. Returns the saved file path.', {}),
         _fn('browser_metrics', 'Collect page performance timing, viewport size, title and visible text length.', {}),
-        _fn('browser_http_test', 'Make a small HTTP API test and return status, timing and response preview. Use POST only when explicitly requested.',
+        _fn('browser_http_test', 'Make a small HTTP API test and return status, timing and response preview. Supports custom headers; use {{secret:github}} in a header value for the saved GitHub token. Use write methods only when explicitly requested.',
             {
               'url': _p('Full http(s) URL'),
-              'method': _p('GET or POST'),
-              'body': _p('Optional JSON object for POST', 'object'),
+              'method': _p('GET, POST, PUT, PATCH, DELETE or HEAD'),
+              'headers': _p('Header name -> value, e.g. {"Authorization":"Bearer {{secret:github}}"}', 'object'),
+              'body': _p('Optional JSON object or raw string', 'object'),
             }, ['url']),
         _fn('browser_back', 'Go back one page in history.', {}),
         _fn('browser_show', 'Show or hide the browser panel so the user can watch.',
@@ -202,17 +205,17 @@ class BrowserToolkit implements Toolkit {
             return JSON.stringify({url:location.href,title:document.title,viewport:{w:innerWidth,h:innerHeight},visibleText:(document.body&&document.body.innerText||'').length,domReady:n?n.domContentLoadedEventEnd:0,load:n?n.loadEventEnd:0});
           })()''')));
         case 'browser_http_test':
-          final u = Uri.tryParse('${a['url']}');
-          if (u == null || !(u.scheme == 'http' || u.scheme == 'https') || u.host.isEmpty) return const ToolResult('Only full http:// or https:// URLs are allowed.', ok: false);
           final method = '${a['method'] ?? 'GET'}'.toUpperCase();
-          if (method != 'GET' && method != 'POST') return const ToolResult('Only GET and POST are supported.', ok: false);
-          final sw = Stopwatch()..start();
-          final req = await HttpClient().openUrl(method, u);
-          req.headers.contentType = ContentType.json;
-          if (method == 'POST' && a['body'] is Map) req.write(jsonEncode(a['body']));
-          final res = await req.close().timeout(const Duration(seconds: 15));
-          final body = await res.transform(utf8.decoder).join();
-          return ToolResult('HTTP ${res.statusCode} · ${sw.elapsedMilliseconds} ms\n${body.length > 6000 ? '${body.substring(0, 6000)}…' : body}');
+          if (!const {'GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'}.contains(method)) {
+            return const ToolResult('Unsupported HTTP method.', ok: false);
+          }
+          final runner = http ?? HttpRunner();
+          final hdr = <String, String>{};
+          if (a['headers'] is Map) (a['headers'] as Map).forEach((k, v) => hdr['$k'] = '$v');
+          final res = await runner.send(method, '${a['url']}',
+              headers: hdr, body: a['body'], timeout: const Duration(seconds: 20));
+          final t = await runner.redact(res.text);
+          return ToolResult('HTTP ${res.status} \u00b7 ${res.ms} ms\n${t.length > 6000 ? '${t.substring(0, 6000)}\u2026' : t}', ok: res.status < 400);
         case 'browser_back':
           if (await _b.controller.canGoBack()) await _b.controller.goBack();
           await _b.settle();

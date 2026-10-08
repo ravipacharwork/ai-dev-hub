@@ -55,6 +55,89 @@ class Deliverable {
   }
 }
 
+/// What a live page reported while it ran.
+typedef PreviewReport = ({bool loaded, List<String> errors});
+
+/// The chat card of a live page reports its load state and JavaScript errors
+/// here (keyed by the page file path), so the tool that showed the page can
+/// hand them to the model instead of only showing them to the user.
+class PreviewReports {
+  PreviewReports._();
+  static final instance = PreviewReports._();
+
+  static const maxErrors = 20;
+  final _errors = <String, List<String>>{};
+  final _loaded = <String>{};
+
+  final _seen = <String, int>{}; // errors already handed to the model, per page
+  final _drivers = <String, Future<void> Function(String js)>{};
+
+  void loaded(String key) => _loaded.add(key);
+
+  /// The card registers a way to run JavaScript in its page (to click through it).
+  void attach(String key, Future<void> Function(String js) run) => _drivers[key] = run;
+
+  /// Runs [js] in the page. False when the card is not showing it.
+  Future<bool> run(String key, String js) async {
+    final d = _drivers[key];
+    if (d == null) return false;
+    try {
+      await d(js);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Errors from pages the model already checked that arrived since (for
+  /// example after the user clicked something). Null when there are none.
+  String? takeLateNote() {
+    final fresh = <String>[];
+    for (final key in _seen.keys.toList()) {
+      final l = _errors[key] ?? const <String>[];
+      final n = _seen[key]!;
+      if (l.length > n) {
+        fresh.addAll(l.sublist(n));
+        _seen[key] = l.length;
+      }
+    }
+    if (fresh.isEmpty) return null;
+    return 'NOTE: the live preview reported new JavaScript errors after your last check '
+        '(likely after the user interacted with it):\n${fresh.take(10).map((e) => '- $e').join('\n')}\n'
+        'If it matters for the task, fix the cause and call preview_html again.';
+  }
+
+  void error(String key, String message) {
+    final l = _errors.putIfAbsent(key, () => []);
+    if (l.length < maxErrors && !l.contains(message)) l.add(message);
+  }
+
+  void reset(String key) {
+    _errors.remove(key);
+    _loaded.remove(key);
+  }
+
+  /// Waits until the page has loaded and [grace] more has passed (scripts run
+  /// and fail soon after load), or until [timeout]. `loaded` is false when the
+  /// card never showed the page (for example the user left the chat).
+  Future<PreviewReport> wait(String key,
+      {Duration timeout = const Duration(seconds: 12),
+      Duration grace = const Duration(milliseconds: 2500)}) async {
+    final end = DateTime.now().add(timeout);
+    DateTime? loadedAt;
+    while (DateTime.now().isBefore(end)) {
+      if (_loaded.contains(key)) {
+        loadedAt ??= DateTime.now();
+        if (DateTime.now().difference(loadedAt) >= grace) break;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+    }
+    final errors = List<String>.of(_errors[key] ?? const []);
+    _seen[key] = errors.length; // from now on only newer errors count as "late"
+    return (loaded: _loaded.contains(key), errors: errors);
+  }
+}
+
 /// Saves deliverables under <root>/<timestamp>/<name>, inside the app sandbox.
 class DeliveryStore {
   final Future<Directory> Function() root;

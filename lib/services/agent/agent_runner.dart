@@ -6,6 +6,7 @@ import '../build_poller.dart';
 import '../deliverables.dart';
 import '../router_service.dart';
 import 'agent_tools.dart';
+import 'plan.dart';
 
 /// What the chat screen renders while the agent works.
 sealed class AgentEvent {}
@@ -23,7 +24,14 @@ class AgentToolStart extends AgentEvent {
 class AgentToolDone extends AgentEvent {
   final String id, summary;
   final bool ok;
-  AgentToolDone(this.id, this.ok, this.summary);
+  final String? checkpoint; // undo point taken before this step, if any
+  AgentToolDone(this.id, this.ok, this.summary, {this.checkpoint});
+}
+
+/// The checklist card: a full snapshot that replaces the previous one.
+class AgentPlan extends AgentEvent {
+  final PlanSnapshot plan;
+  AgentPlan(this.plan);
 }
 
 class AgentBuild extends AgentEvent {
@@ -57,16 +65,30 @@ class AgentRunner {
   final int maxSteps;
   final Duration? maxDuration; // wall-clock budget for the whole run
   final String? modeNote; // extra system instructions for Build / Autonomous
+
+  /// Runs once per user request, returns the project-memory block (AGENTS.md)
+  /// that is added to the system prompt. May be null or throw: it is optional.
+  final Future<String?> Function()? beginRun;
+
+  /// Polled before a run and after each tool result: text to tell the model
+  /// about things that happened on their own (e.g. late preview errors).
+  final String? Function()? notices;
   AgentRunner({
     required this.router,
     required this.toolkit,
     this.maxSteps = 10,
     this.maxDuration,
     this.modeNote,
+    this.beginRun,
+    this.notices,
   });
 
   bool _cancelled = false;
-  void cancel() => _cancelled = true;
+  Completer<void> _cancelSignal = Completer<void>();
+  void cancel() {
+    _cancelled = true;
+    if (!_cancelSignal.isCompleted) _cancelSignal.complete();
+  }
 
   Stream<AgentEvent> run({
     required List<Map<String, dynamic>> messages,
@@ -77,8 +99,19 @@ class AgentRunner {
     int? maxTokens,
   }) async* {
     _cancelled = false;
+    _cancelSignal = Completer<void>();
     final started = DateTime.now();
-    final note = modeNote == null ? toolkit.systemNote : '${toolkit.systemNote}\n\n$modeNote';
+    String? memory;
+    try {
+      memory = await beginRun?.call();
+    } catch (_) {/* project memory is optional */}
+    final parts = [
+      toolkit.systemNote,
+      if (memory != null && memory.isNotEmpty) memory,
+      if (modeNote != null) modeNote!,
+      if (notices?.call() case final String n) n,
+    ];
+    final note = parts.join('\n\n');
     final convo = <Map<String, dynamic>>[
       for (final m in messages) Map<String, dynamic>.of(m),
     ];
@@ -221,13 +254,23 @@ class AgentRunner {
         final build = res.build;
         if (build != null) yield AgentBuild(build);
         if (res.deliverables.isNotEmpty) yield AgentDeliver(res.deliverables);
-        yield AgentToolDone(id, res.ok, _summary(res.content));
+        final plan = res.plan;
+        if (plan != null) yield AgentPlan(plan);
+        final settle = res.settle;
+        if (settle != null) {
+          // e.g. wait for the CI result so the model can read the log and fix.
+          final waited = await Future.any<ToolResult?>([settle(), _cancelSignal.future.then((_) => null)]);
+          if (waited == null || _cancelled) return;
+          res = ToolResult(waited.content,
+              ok: waited.ok, checkpoint: res.checkpoint, deliverables: waited.deliverables);
+        }
+        yield AgentToolDone(id, res.ok, _summary(res.content), checkpoint: res.checkpoint);
+        final extra = notices?.call();
+        final body = extra == null ? res.content : '${res.content}\n\n$extra';
         convo.add({
           'role': 'tool',
           'tool_call_id': id,
-          'content': res.content.length > _resultCap
-              ? '${res.content.substring(0, _resultCap)}\n[truncated]'
-              : res.content,
+          'content': body.length > _resultCap ? '${body.substring(0, _resultCap)}\n[truncated]' : body,
         });
       }
     }

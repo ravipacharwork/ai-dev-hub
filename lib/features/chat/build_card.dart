@@ -20,6 +20,7 @@ class _BuildCardState extends State<BuildCard> {
   BuildStatus? _last;
   bool _buzzed = false;
   final _busy = <int>{};
+  bool _showLog = false;
 
   @override
   void initState() {
@@ -47,67 +48,165 @@ class _BuildCardState extends State<BuildCard> {
   @override
   Widget build(BuildContext context) {
     final s = _last;
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final phase = s?.phase;
     final active = s == null ||
-        s.phase == BuildPhase.dispatching ||
-        s.phase == BuildPhase.queued ||
-        s.phase == BuildPhase.running;
-    return Glass(
+        phase == BuildPhase.dispatching ||
+        phase == BuildPhase.queued ||
+        phase == BuildPhase.running;
+    final good = phase == BuildPhase.succeeded;
+    final bad = phase == BuildPhase.failed || phase == BuildPhase.timedOut;
+    final tint = good
+        ? const Color(0xFF30D158)
+        : bad
+            ? cs.error
+            : cs.primary;
+    return SoftCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Icon(
-              s?.phase == BuildPhase.succeeded
-                  ? Icons.check_circle_rounded
-                  : s?.phase == BuildPhase.failed || s?.phase == BuildPhase.timedOut
-                      ? Icons.error_rounded
-                      : Icons.construction_rounded,
-              color: s?.phase == BuildPhase.succeeded
-                  ? Colors.green
-                  : s?.phase == BuildPhase.failed
-                      ? Colors.red
-                      : Theme.of(context).colorScheme.primary),
-          const SizedBox(width: 8),
-          Expanded(child: Text(_title, style: Theme.of(context).textTheme.titleSmall)),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: tint.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              child: Icon(
+                good
+                    ? Icons.check_rounded
+                    : bad
+                        ? Icons.error_outline_rounded
+                        : Icons.construction_rounded,
+                key: ValueKey(phase),
+                color: tint,
+                size: 21,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(_title,
+                  style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+              if (s?.detail != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(s!.detail!,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                ),
+            ]),
+          ),
           if (s?.runUrl != null)
             IconButton(
+                tooltip: 'Open on GitHub',
                 visualDensity: VisualDensity.compact,
-                icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                icon: const Icon(Icons.open_in_new_rounded, size: 19),
                 onPressed: () => launchUrl(Uri.parse(s!.runUrl!))),
         ]),
-        if (active) ...[
+        if (phase == BuildPhase.failed && s?.failureLog != null) ...[
           const SizedBox(height: 10),
-          const LinearProgressIndicator(minHeight: 3),
+          GestureDetector(
+            onTap: () {
+              Haptics.toggle();
+              setState(() => _showLog = !_showLog);
+            },
+            child: Row(children: [
+              Icon(_showLog ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                  size: 18, color: cs.onSurfaceVariant),
+              const SizedBox(width: 4),
+              Text(_showLog ? 'Hide error log' : 'Show error log',
+                  style: tt.labelLarge?.copyWith(color: cs.onSurfaceVariant)),
+            ]),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: _showLog
+                ? Container(
+                    margin: const EdgeInsets.only(top: 8),
+                    constraints: const BoxConstraints(maxHeight: 220),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest.withOpacity(0.55),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: SingleChildScrollView(
+                      child: SelectableText(s!.failureLog!,
+                          style: const TextStyle(
+                              fontFamily: 'monospace', fontSize: 11.5, height: 1.4)),
+                    ),
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
         ],
-        if (s?.detail != null) Text(s!.detail!),
+        if (active) ...[
+          const SizedBox(height: 14),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: const LinearProgressIndicator(minHeight: 4),
+          ),
+        ],
         for (final a in s?.artifacts ?? const <BuildArtifact>[])
           Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Row(children: [
-              Icon(a.looksLikeApk ? Icons.android_rounded : Icons.folder_zip_rounded),
-              const SizedBox(width: 8),
-              Expanded(
-                  child: Text('${a.name}  ·  ${(a.sizeBytes / 1048576).toStringAsFixed(1)} MB',
-                      overflow: TextOverflow.ellipsis)),
-              FilledButton.tonal(
-                onPressed: a.expired || _busy.contains(a.id)
-                    ? null
-                    : () async {
-                        Haptics.toggle();
-                        setState(() => _busy.add(a.id));
-                        try {
-                          await widget.onDownload(a);
-                        } finally {
-                          if (mounted) setState(() => _busy.remove(a.id));
-                        }
-                      },
-                child: Text(a.expired
-                    ? 'Expired'
-                    : _busy.contains(a.id)
-                        ? '…'
-                        : a.looksLikeApk
-                            ? 'Install'
-                            : 'Download'),
+            padding: const EdgeInsets.only(top: 12),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest.withOpacity(0.55),
+                borderRadius: BorderRadius.circular(14),
               ),
-            ]),
+              child: Row(children: [
+                Icon(a.looksLikeApk ? Icons.android_rounded : Icons.folder_zip_rounded,
+                    color: cs.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(a.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                    Text('${(a.sizeBytes / 1048576).toStringAsFixed(1)} MB',
+                        style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
+                  ]),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 36),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    shape: const StadiumBorder(),
+                  ),
+                  onPressed: a.expired || _busy.contains(a.id)
+                      ? null
+                      : () async {
+                          Haptics.toggle();
+                          setState(() => _busy.add(a.id));
+                          try {
+                            await widget.onDownload(a);
+                          } finally {
+                            if (mounted) setState(() => _busy.remove(a.id));
+                          }
+                        },
+                  child: _busy.contains(a.id)
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : Text(a.expired
+                          ? 'Expired'
+                          : a.looksLikeApk
+                              ? 'Install'
+                              : 'Download'),
+                ),
+              ]),
+            ),
           ),
       ]),
     );

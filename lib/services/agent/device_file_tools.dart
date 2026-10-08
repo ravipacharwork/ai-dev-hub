@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import 'agent_tools.dart';
+import 'local_undo.dart';
 
 /// File management on the device's shared storage, driven by the model.
 ///
@@ -116,6 +117,41 @@ class DeviceFileToolkit implements Toolkit {
 
   static String? _s(Map<String, dynamic> a, String k) => a[k] is String ? a[k] as String : null;
   static int? _i(Object? v) => v is int ? v : (v is num ? v.toInt() : int.tryParse('$v'));
+
+  // ---- undo -----------------------------------------------------------------
+
+  /// What the undo log snapshots before [name] runs; null when the call does
+  /// not change anything.
+  Future<UndoPlan?> undoPlan(String name, Map<String, dynamic> a) async {
+    switch (name) {
+      case 'fs_restore':
+        // The target is the origin recorded in the trash entry.
+        final id = _s(a, 'id');
+        if (id == null || id.isEmpty || id.contains('/') || id.contains('..')) return null;
+        final meta = File(p.join(trashDir, id, 'meta.json'));
+        if (!await meta.exists()) return null;
+        final origin = (jsonDecode(await meta.readAsString()) as Map)['origin'];
+        if (origin is! String || _check(origin, mutating: true) != null) return null;
+        return UndoPlan('$name  ${p.basename(origin)}', [origin]);
+      case 'fs_write':
+      case 'fs_replace':
+      case 'fs_mkdir':
+      case 'fs_delete':
+        final path = _resolve(a['path']);
+        if (path == null || _check(path, mutating: true) != null) return null;
+        return UndoPlan('$name  ${p.basename(path)}', [path]);
+      case 'fs_move':
+        final from = _resolve(a['from']), to = _resolve(a['to']);
+        if (from == null || to == null) return null;
+        if (_check(from, mutating: true) != null || _check(to, mutating: true) != null) return null;
+        return UndoPlan('$name  ${p.basename(from)} → ${p.basename(to)}', [from, to]);
+      case 'fs_copy':
+        final to = _resolve(a['to']);
+        if (to == null || _check(to, mutating: true) != null) return null;
+        return UndoPlan('$name  → ${p.basename(to)}', [to]);
+    }
+    return null;
+  }
 
   // ---- approval -------------------------------------------------------------
 

@@ -26,10 +26,17 @@ class TreeEntry {
 class FileToCommit {
   final String path;
   final String? text; // null + delete=true => remove file
+  final List<int>? bytes; // binary content (images, jars, ...)
   final bool delete;
-  const FileToCommit.write(this.path, String this.text) : delete = false;
+  const FileToCommit.write(this.path, String this.text)
+      : bytes = null,
+        delete = false;
+  const FileToCommit.writeBytes(this.path, List<int> this.bytes)
+      : text = null,
+        delete = false;
   const FileToCommit.remove(this.path)
       : text = null,
+        bytes = null,
         delete = true;
 }
 
@@ -149,7 +156,7 @@ class GitHubService {
       }
       final blob = _ok<Map>(
           await _dio.post('${r.path}/git/blobs', data: {
-            'content': base64.encode(utf8.encode(f.text!)),
+            'content': base64.encode(f.bytes ?? utf8.encode(f.text!)),
             'encoding': 'base64',
           }),
           allow: [201]);
@@ -175,6 +182,87 @@ class GitHubService {
     _ok<Map>(await _dio.patch('${r.path}/git/refs/heads/$branch',
         data: {'sha': commit['sha']})); // fails if not fast-forward: good
     return commit['sha'] as String;
+  }
+
+  // ---- Git-like helpers (used by the terminal's `git` command) -------------
+
+  /// Head commit sha of [branch].
+  Future<String> branchSha(RepoRef r, String branch) async =>
+      _ok<Map>(await _dio.get('${r.path}/git/ref/heads/$branch'))['object']['sha']
+          as String;
+
+  /// Creates `refs/heads/[name]` pointing at [fromSha].
+  Future<void> createBranch(RepoRef r, String name, String fromSha) async {
+    _ok<Map>(
+        await _dio.post('${r.path}/git/refs',
+            data: {'ref': 'refs/heads/$name', 'sha': fromSha}),
+        allow: [201]);
+  }
+
+  /// Newest-first commit list: (sha, message, author, date).
+  Future<List<(String, String, String, String)>> listCommits(RepoRef r, String ref,
+      {int perPage = 10}) async {
+    final res = await _dio.get('${r.path}/commits',
+        queryParameters: {'sha': ref, 'per_page': perPage});
+    return [
+      for (final c in _ok<List>(res))
+        (
+          c['sha'] as String,
+          ((c['commit']['message'] as String).split('\n').first),
+          '${c['commit']['author']['name']}',
+          '${c['commit']['author']['date']}',
+        )
+    ];
+  }
+
+  /// Raw bytes of one file at [ref] (works for blobs > 1 MB too).
+  Future<Uint8List> readBytes(RepoRef r, String path, String ref) async {
+    final res = await _dio.get<List<int>>('${r.path}/contents/$path',
+        queryParameters: {'ref': ref},
+        options: Options(
+            responseType: ResponseType.bytes,
+            headers: {'Accept': 'application/vnd.github.raw+json'}));
+    if (res.statusCode != 200) {
+      throw GitHubException('read failed: $path', res.statusCode);
+    }
+    return Uint8List.fromList(res.data!);
+  }
+
+  /// Jobs of a workflow run (id, name, conclusion, steps[]).
+  Future<List<Map<String, dynamic>>> runJobs(RepoRef r, int runId) async {
+    final res = await _dio.get('${r.path}/actions/runs/$runId/jobs',
+        queryParameters: {'per_page': 30});
+    return List<Map<String, dynamic>>.from(_ok<Map>(res)['jobs'] as List);
+  }
+
+  /// Newest runs of a workflow on a branch (any event).
+  Future<List<Map<String, dynamic>>> latestRuns(RepoRef r,
+      {required String workflowFile, required String branch, int perPage = 5}) async {
+    final res = await _dio.get('${r.path}/actions/workflows/$workflowFile/runs',
+        queryParameters: {'branch': branch, 'per_page': perPage});
+    return List<Map<String, dynamic>>.from(_ok<Map>(res)['workflow_runs'] as List);
+  }
+
+  /// Plain-text log of one job. The API answers 302 to a signed URL: follow it
+  /// manually so the GitHub token is never sent to the blob host.
+  Future<String> jobLog(RepoRef r, int jobId) async {
+    final first = await _dio.get('${r.path}/actions/jobs/$jobId/logs',
+        options: Options(
+            followRedirects: false,
+            responseType: ResponseType.plain,
+            validateStatus: (s) => s != null && s < 400));
+    final location = first.headers.value('location');
+    if (location == null) return '${first.data ?? ''}';
+    final res = await Dio().get<String>(location,
+        options: Options(responseType: ResponseType.plain));
+    return res.data ?? '';
+  }
+
+  /// Force-moves [branch] to [sha] (used by Undo). Callers must verify first
+  /// that nobody else has pushed in the meantime.
+  Future<void> resetBranch(RepoRef r, String branch, String sha) async {
+    _ok<Map>(await _dio.patch('${r.path}/git/refs/heads/$branch',
+        data: {'sha': sha, 'force': true}));
   }
 
   // ---- Actions -------------------------------------------------------------

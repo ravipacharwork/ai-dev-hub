@@ -136,3 +136,41 @@ Written against current APIs from memory and **not compiled or run** (no Flutter
 - Router: a 400 on a request containing photos no longer cools the provider down for 5 minutes (text-only models reject images).
 - Photos are sent as `image_url` parts, so they only work with vision-capable models. Pick one in the model pill if Auto fails.
 - webview_flutter on Android may need `minSdk 21+` (already >= 23).
+
+## Update: Terminal v2 (real shell, git, jobs) + Apple-style UI
+
+**Why:** the old terminal was a ~20-command simulator (everything else returned exit 127), with no network, no git, a 60 s cap, and a separate file world.
+
+| Blocker | Fix in code |
+|---|---|
+| No real shell | `terminal_bridge.dart` runs `/system/bin/sh` (toybox) in the app sandbox: pipes, redirects, `&&`, loops, scripts. Old simulator kept as `terminal_legacy.dart` fallback (iOS). |
+| No git | `git_lite.dart`: clone (zipball), status, diff, commit, push (one atomic Git Data API commit), pull (conflict-aware), log, branch, checkout, reset. Token never reaches the model. |
+| No network | `curl` / `wget` built-ins via `http_runner.dart` (any method, headers, body, `-o`). Auth header is never forwarded on cross-host redirects. |
+| `browser_http_test` had no headers | Now shares `HttpRunner`: `headers`, all methods, `{{secret:github}}` placeholder, auto-auth for `api.github.com`; token redacted from output. New `http_request` tool does the same. |
+| No toolchain | Not possible on a phone (no JDK/Gradle/Node). The agent is told to push and run GitHub Actions instead; error 127 prints that hint. |
+| 60 s cap | `terminal_run` up to 600 s, plus `terminal_job_start / poll / kill / list` (log file backed, max 4 jobs). Jobs die if Android kills the app. |
+| /workspace vs /storage islands | `/storage` maps to `/storage/emulated/0` when "Phone storage in terminal" is on (needs All-files access). |
+| No `which`/`env` | `which` knows built-ins; `env` is the shell's. |
+| Interactive prompts | stdin is closed, `GIT_TERMINAL_PROMPT=0`, `CI=true`. |
+| Persistence | `/workspace` lives in the app documents dir and survives restarts (shown in the Terminal screen). |
+
+Built-ins (`git curl wget unzip zip tar jobs which`) run as their own command, or chained with `&&`, `;`, `||`, and may feed a pipe (`curl ... | head`). They do not run inside scripts/loops/subshells; `$root/bin` shims explain this.
+
+UI: `core/ios_widgets.dart` (large-title page, inset grouped sections, icon badges, CupertinoSwitch, sliding segmented control, action sheets). Settings, API Keys and Terminal screens use it. Connectors, Skills, Proxy and GitHub screens still use the older Glass style.
+
+Not compiled: no Flutter toolchain was available. Run `flutter pub get && flutter analyze` first.
+
+
+## Update: agent v3 (verify loop, plan card, memory, preview, undo, silent terminal)
+
+| Feature | Where | How it works |
+|---|---|---|
+| Auto-verify loop | `agent_tools.dart` (`_commit`, `_startBuild`, `_afterBuild`, `get_build_logs`), `build_poller.dart` (`failureDigest`, `trimLog`, `BuildTracker`), `agent_runner.dart` (`ToolResult.settle`) | `commit_changes` pushes, dispatches the workflow, shows the live card and WAITS. On failure the failed job/step and a trimmed log go back to the model, which fixes and commits again. Max 3 failed builds per request, then it must stop and explain. Setting: Auto-verify builds. |
+| Plan card | `plan.dart` (`update_plan`), `features/chat/plan_card.dart` | Pure UI tool. One card per run, replaced in place by each snapshot (pending / active / done / failed). |
+| Project memory | `AgentWorkspace.beginRun`, `remember` tool | `AGENTS.md` is read at the start of every run and added to the system prompt (8 KB cap). `remember` stages one-line notes; if the file is missing the agent is told to create it. |
+| Live preview | `preview_tools.dart` (`preview_html`), `deliverable_card.dart`, `deliverables.dart` (`PreviewReports`), `agent_runner.dart` (`notices`) | Builds a single page from repo files including STAGED edits (local css/js/small images inlined). Card has Reload, Full screen and a JavaScript error banner. The card reports page load and JS errors to `PreviewReports`; `preview_html` waits for that (`ToolResult.settle`, max 12 s) and returns the errors to the model, which fixes and previews again (max 2 retries). After load the page's visible buttons are auto-clicked once (max 12, risky-sounding ones and form submits skipped; `explore:false` turns it off), and optional `click` selectors are clicked in order (via `runJavaScript`), so errors behind interactions are returned too. It cannot type text or fill forms. Errors that appear later (user interaction) are queued and added to the next tool result or run by `AgentRunner.notices`. If the page never reports, the model is told it is unverified. |
+| Undo | `Checkpoint`, `AgentWorkspace.checkpoint/restore`, `local_undo.dart` (`LocalUndoLog`, `UndoToolkit`), `AppServices.undo`, `_ToolRow` undo button, header menu "Undo points" | Repo: a snapshot of staged changes + branch head is taken before every mutating tool; restore resets staged files and, if commits were made since, force-moves the branch back, but only if nobody else pushed in between. Local files: `UndoToolkit` wraps the device-file and terminal toolkits and snapshots the touched paths (fs_* incl. fs_restore) or the whole `/workspace` plus the `/storage` paths the command names (terminal_run / terminal_job_start) before the call. Unchanged files are not copied again. Undo points are saved as JSON in the store (`index/`) and reloaded at startup, so they survive an app restart. Undo puts changed/deleted files back and moves files created since into `removed/` of the store (not deleted). A `git push` from the shell is recorded (`GitLite.onPush`, `PushRecord`); undo moves the branch back on GitHub if nobody pushed after it. `AppServices.undo` restores local side first, then the repo side, by time, so "later steps are undone too" holds across them. |
+| Silent terminal | `terminal_tools.dart`, `settings_screen.dart` | Terminal screen removed. No tool row, no command text in the notification, and the model is told the user cannot see it. |
+
+Cannot be undone, so the app asks first: HTTP POST/PUT/PATCH/DELETE (always asks, even with command confirmation off) and shell commands that build `/storage` paths at run time (variables, scripts, xargs, find -exec; asks when phone storage is on). Other limits: files over 1 GB or past 2 GB per snapshot are not backed up (undo reports how many); the store keeps at most 4 GB and drops the oldest undo points first; a copy can fail when the disk is full.
+Not compiled: no Flutter toolchain here. Run `flutter pub get && flutter analyze` first.

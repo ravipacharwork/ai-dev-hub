@@ -1,13 +1,14 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/haptics.dart';
-import '../../core/theme.dart';
+import '../../core/ios_widgets.dart';
 import '../../services/app_settings.dart';
 import '../../services/chat_codec.dart';
 import '../../services/local_gateway.dart';
@@ -43,8 +44,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
-  void _toast(String m) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
   Future<void> _export(bool markdown) async {
     try {
@@ -52,8 +52,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (sessions.isEmpty) return _toast('No chats to export');
       final dir = await getTemporaryDirectory();
       final f = File('${dir.path}/chats.${markdown ? 'md' : 'json'}');
-      await f.writeAsString(
-          markdown ? ChatCodec.toMarkdown(sessions) : ChatCodec.toJson(sessions));
+      await f.writeAsString(markdown ? ChatCodec.toMarkdown(sessions) : ChatCodec.toJson(sessions));
       Haptics.toggle();
       await Share.shareXFiles([XFile(f.path)]);
     } catch (e) {
@@ -63,8 +62,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _import() async {
     try {
-      final r = await FilePicker.platform
-          .pickFiles(type: FileType.custom, allowedExtensions: ['json']);
+      final r = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['json']);
       final path = r?.files.single.path;
       if (path == null) return;
       final sessions = ChatCodec.fromJson(await File(path).readAsString());
@@ -78,257 +76,270 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Widget _section(String title, List<Widget> children) => Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Glass(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: Theme.of(context).textTheme.titleSmall),
-            const SizedBox(height: 8),
-            ...children,
-          ]),
-        ),
-      );
+  Future<void> _toggleDeviceFiles(bool v) async {
+    if (v) {
+      var st = await Permission.manageExternalStorage.status;
+      if (!st.isGranted) st = await Permission.manageExternalStorage.request();
+      if (!st.isGranted) {
+        _toast('Allow "All files access" for AI Dev Hub, then switch this on again.');
+        await openAppSettings();
+        return;
+      }
+    }
+    s.setDeviceFilesEnabled(v);
+    setState(() {});
+  }
 
-  Widget _gatewaySection(LocalGateways g) => ListenableBuilder(
+  Widget _gateway(LocalGateways g) => ListenableBuilder(
         listenable: g,
-        builder: (ctx, _) => _section('Routing gateway', [
-          SegmentedButton<GatewayKind>(
-            segments: [
-              for (final k in GatewayKind.values)
-                ButtonSegment(value: k, label: Text(k.label)),
-            ],
-            selected: {g.kind},
-            onSelectionChanged: g.busy
-                ? null
-                : (v) {
-                    Haptics.toggle();
-                    g.switchTo(v.first);
-                  },
-          ),
-          const SizedBox(height: 8),
-          Row(children: [
-            if (g.busy)
-              const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2))
-            else
-              Icon(Icons.circle,
-                  size: 10, color: g.running ? Colors.green : Colors.red),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                g.busy
-                    ? 'Switching…'
-                    : g.running
-                        ? '${g.kind.label} running on 127.0.0.1:${g.port}'
-                        : 'Stopped',
-                style: Theme.of(ctx).textTheme.bodyMedium,
-              ),
+        builder: (ctx, _) => IosSection(
+          header: 'Routing',
+          footer: g.error ?? g.kind.blurb,
+          children: [
+            IosTile(
+              icon: CupertinoIcons.antenna_radiowaves_left_right,
+              iconColor: IosColors.blue,
+              title: g.kind.label,
+              subtitle: g.busy
+                  ? 'Switching…'
+                  : g.running
+                      ? 'Running on 127.0.0.1:${g.port}'
+                      : 'Stopped',
+              trailing: g.busy
+                  ? const CupertinoActivityIndicator()
+                  : IosPill(g.running ? 'Online' : 'Offline', g.running ? IosColors.green : IosColors.red),
             ),
-          ]),
-          const SizedBox(height: 4),
-          Text(g.kind.blurb, style: Theme.of(ctx).textTheme.bodySmall),
-          if (g.error != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(g.error!,
-                  style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
-            ),
-        ]),
+          ],
+        ),
       );
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      body: ListView(padding: const EdgeInsets.all(12), children: [
-        if (widget.gateways != null) _gatewaySection(widget.gateways!),
-        _section('Appearance', [
-          SegmentedButton<ThemeMode>(
-            segments: const [
-              ButtonSegment(value: ThemeMode.system, label: Text('System')),
-              ButtonSegment(value: ThemeMode.light, label: Text('Light')),
-              ButtonSegment(value: ThemeMode.dark, label: Text('Dark')),
-            ],
-            selected: {s.themeMode},
-            onSelectionChanged: (v) {
-              Haptics.toggle();
-              s.setTheme(v.first);
-              setState(() {});
-            },
-          ),
-          const SizedBox(height: 8),
-          _FontSizeSlider(value: s.fontScale, onEnd: s.setFontScale),
-        ]),
-        _section('Permissions', [
-          FutureBuilder<PermissionStatus>(
-            future: Permission.manageExternalStorage.status,
-            builder: (ctx, snap) {
-              final granted = snap.data?.isGranted == true;
-              return ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(granted ? Icons.check_circle_rounded : Icons.folder_open_rounded,
-                    color: granted ? Colors.green : null),
-                title: const Text('Phone files access'),
-                subtitle: Text(granted
-                    ? 'Allowed once · AI Dev Hub can work with shared storage'
-                    : 'Not allowed · grant once in Android Settings'),
-                trailing: TextButton(
-                  onPressed: () async {
-                    await openAppSettings();
-                    if (mounted) setState(() {});
-                  },
-                  child: Text(granted ? 'Manage' : 'Allow'),
-                ),
-              );
-            },
-          ),
-          Text('Android remembers this special permission until you revoke it. App-private and protected system folders remain blocked.',
-              style: Theme.of(context).textTheme.bodySmall),
-        ]),
-        _section('Assistant', [
-          TextField(
-            controller: _prompt,
-            minLines: 2,
-            maxLines: 6,
-            decoration: const InputDecoration(labelText: 'Default system prompt'),
-            onChanged: s.setSystemPrompt,
-          ),
-          const SizedBox(height: 4),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Let the model work on my repo'),
-            subtitle: const Text(
-                'Read and stage files on the selected GitHub repo. Commits and builds always ask first. Needs a model with tool calling.'),
-            value: s.toolsEnabled,
+    return IosPage(
+      title: 'Settings',
+      children: [
+        if (widget.gateways != null) _gateway(widget.gateways!),
+        IosSection(header: 'Appearance', children: [
+          IosSegmented<ThemeMode>(
+            options: const {ThemeMode.system: 'System', ThemeMode.light: 'Light', ThemeMode.dark: 'Dark'},
+            value: s.themeMode,
             onChanged: (v) {
-              Haptics.toggle();
-              s.setToolsEnabled(v);
+              s.setTheme(v);
               setState(() {});
             },
           ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Device file access'),
-            subtitle: const Text(
-                'Let the model list, read, edit, move and delete files on this phone. Deletes ask first and go to a 30-day trash; edits are backed up. Needs "All files access".'),
-            value: s.deviceFilesEnabled,
-            onChanged: (v) async {
-              Haptics.toggle();
-              if (v) {
-                var st = await Permission.manageExternalStorage.status;
-                if (!st.isGranted) st = await Permission.manageExternalStorage.request();
-                if (!st.isGranted) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                        content: Text('Grant "All files access" for AI Dev Hub, then switch this on again.')));
-                  }
-                  await openAppSettings();
-                  return;
-                }
-              }
-              s.setDeviceFilesEnabled(v);
-              setState(() {});
-            },
-          ),
+          _FontSize(value: s.fontScale, onEnd: s.setFontScale),
         ]),
-        _section('Power mode', [
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            secondary: const Icon(Icons.bolt_rounded),
-            title: const Text('Enable Power Mode'),
-            subtitle: const Text('Unlock advanced agent workflows while keeping Android system access restricted.'),
-            value: s.powerMode,
-            onChanged: (v) { Haptics.toggle(); s.setPowerMode(v); setState(() {}); },
-          ),
-          DropdownButtonFormField<String>(
-            value: s.routingProfile,
-            decoration: const InputDecoration(labelText: 'Routing profile'),
-            items: const [
-              DropdownMenuItem(value: 'auto', child: Text('Auto · best available')),
-              DropdownMenuItem(value: 'fast', child: Text('Fast · lowest latency')),
-              DropdownMenuItem(value: 'cheap', child: Text('Cheap · free-tier priority')),
-              DropdownMenuItem(value: 'coding', child: Text('Coding · code-focused models')),
-            ],
-            onChanged: (v) { if (v != null) { s.setRoutingProfile(v); setState(() {}); } },
-          ),
-          const SizedBox(height: 4),
-          Text('Power Mode never grants root, ADB, hidden app access or silent installs.', style: Theme.of(context).textTheme.bodySmall),
+        IosSection(
+          header: 'Coding agent',
+          footer:
+              'Commits, builds and pushes always ask first. Tool calling needs a model that supports it.',
+          children: [
+            IosSwitchTile(
+              icon: CupertinoIcons.arrow_branch,
+              iconColor: IosColors.indigo,
+              title: 'Work on my GitHub repo',
+              subtitle: 'Read, edit and stage files on the selected repo',
+              value: s.toolsEnabled,
+              onChanged: (v) {
+                s.setToolsEnabled(v);
+                setState(() {});
+              },
+            ),
+            if (s.toolsEnabled)
+              IosSwitchTile(
+                icon: CupertinoIcons.checkmark_shield_fill,
+                iconColor: IosColors.green,
+                title: 'Auto-verify builds',
+                subtitle: 'After a commit, build on GitHub, read errors and fix them (max 3 tries)',
+                value: s.autoVerify,
+                onChanged: (v) {
+                  s.setAutoVerify(v);
+                  setState(() {});
+                },
+              ),
+            IosSwitchTile(
+              icon: CupertinoIcons.chevron_left_slash_chevron_right,
+              iconColor: IosColors.green,
+              title: 'Background terminal',
+              subtitle: 'The agent runs commands silently. Nothing is shown on screen',
+              value: s.terminalEnabled,
+              onChanged: (v) {
+                s.setTerminalEnabled(v);
+                setState(() {});
+              },
+            ),
+            IosSwitchTile(
+              icon: CupertinoIcons.globe,
+              iconColor: IosColors.teal,
+              title: 'Browser automation',
+              subtitle: 'Open pages, click and type in an in-app browser',
+              value: s.browserEnabled,
+              onChanged: (v) {
+                s.setBrowserEnabled(v);
+                setState(() {});
+              },
+            ),
+            if (s.browserEnabled)
+              IosSwitchTile(
+                icon: CupertinoIcons.shield_fill,
+                iconColor: IosColors.orange,
+                title: 'Ask before browser actions',
+                subtitle: 'Recommended: web pages can try to trick the model',
+                value: s.browserConfirm,
+                onChanged: (v) {
+                  s.setBrowserConfirm(v);
+                  setState(() {});
+                },
+              ),
+            IosSwitchTile(
+              icon: CupertinoIcons.folder_fill,
+              iconColor: IosColors.blue,
+              title: 'Phone file access',
+              subtitle: 'Deletes ask first and go to a 30-day trash',
+              value: s.deviceFilesEnabled,
+              onChanged: _toggleDeviceFiles,
+            ),
+          ],
+        ),
+        IosSection(
+          header: 'Assistant',
+          footer: 'Added to every chat as the system prompt.',
+          children: [
+            IosField(
+              controller: _prompt,
+              placeholder: 'You are a helpful coding assistant.',
+              maxLines: 6,
+              onChanged: s.setSystemPrompt,
+            ),
+          ],
+        ),
+        IosSection(
+          header: 'Power',
+          footer: 'Power Mode never grants root, ADB, hidden app access or silent installs.',
+          children: [
+            IosSwitchTile(
+              icon: CupertinoIcons.bolt_fill,
+              iconColor: IosColors.orange,
+              title: 'Power Mode',
+              subtitle: 'Advanced agent workflows',
+              value: s.powerMode,
+              onChanged: (v) {
+                s.setPowerMode(v);
+                setState(() {});
+              },
+            ),
+            IosTile(
+              icon: CupertinoIcons.speedometer,
+              iconColor: IosColors.pink,
+              title: 'Routing profile',
+              value: _profileLabel(s.routingProfile),
+              chevron: true,
+              onTap: _pickProfile,
+            ),
+          ],
+        ),
+        IosSection(header: 'Chats', children: [
+          IosTile(
+              icon: CupertinoIcons.square_arrow_up,
+              iconColor: IosColors.blue,
+              title: 'Export as JSON',
+              chevron: true,
+              onTap: () => _export(false)),
+          IosTile(
+              icon: CupertinoIcons.doc_text,
+              iconColor: IosColors.indigo,
+              title: 'Export as Markdown',
+              chevron: true,
+              onTap: () => _export(true)),
+          IosTile(
+              icon: CupertinoIcons.square_arrow_down,
+              iconColor: IosColors.green,
+              title: 'Import JSON',
+              chevron: true,
+              onTap: _import),
         ]),
-        _section('Chats', [
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            FilledButton.tonal(onPressed: () => _export(false), child: const Text('Export JSON')),
-            FilledButton.tonal(onPressed: () => _export(true), child: const Text('Export Markdown')),
-            FilledButton.tonal(onPressed: _import, child: const Text('Import JSON')),
-          ]),
-        ]),
-        _section('Advanced', [
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.hub_outlined),
-            title: const Text('Extra providers'),
-            subtitle: const Text('Optional. OmniRoute is built in and supports multiple provider keys.'),
-            trailing: const Icon(Icons.chevron_right_rounded),
+        IosSection(header: 'Advanced', children: [
+          IosTile(
+            icon: CupertinoIcons.cube_box_fill,
+            iconColor: IosColors.purple,
+            title: 'API keys and providers',
+            subtitle: 'Add keys, test connections',
+            chevron: true,
             onTap: widget.onOpenProviders,
           ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.dns_outlined),
-            title: const Text('Local proxy server'),
-            subtitle: const Text('Share the router with other apps on this device.'),
-            trailing: const Icon(Icons.chevron_right_rounded),
+          IosTile(
+            icon: CupertinoIcons.arrow_2_circlepath,
+            iconColor: IosColors.gray,
+            title: 'Local proxy server',
+            subtitle: 'Share the router with other apps on this device',
+            chevron: true,
             onTap: widget.onOpenProxy,
           ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            secondary: const Icon(Icons.public_rounded),
-            title: const Text('Browser automation'),
-            subtitle: const Text('Let the model open pages, click and type in an in-app browser.'),
-            value: s.browserEnabled,
-            onChanged: s.setBrowserEnabled,
-          ),
-          if (s.browserEnabled)
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              secondary: const Icon(Icons.verified_user_outlined),
-              title: const Text('Ask before each browser action'),
-              subtitle: const Text('Recommended: web pages can try to trick the model.'),
-              value: s.browserConfirm,
-              onChanged: s.setBrowserConfirm,
-            ),
         ]),
-      ]),
+      ],
+    );
+  }
+
+  static const _profiles = {
+    'auto': 'Auto',
+    'fast': 'Fast',
+    'cheap': 'Free tier first',
+    'coding': 'Coding',
+  };
+  String _profileLabel(String id) => _profiles[id] ?? id;
+
+  void _pickProfile() {
+    showCupertinoModalPopup<void>(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: const Text('Routing profile'),
+        actions: [
+          for (final e in _profiles.entries)
+            CupertinoActionSheetAction(
+              isDefaultAction: e.key == s.routingProfile,
+              onPressed: () {
+                s.setRoutingProfile(e.key);
+                Navigator.pop(ctx);
+                setState(() {});
+              },
+              child: Text(e.value),
+            ),
+        ],
+        cancelButton: CupertinoActionSheetAction(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+      ),
     );
   }
 }
 
-/// Font-size slider: shows the value live while dragging, persists on release.
-class _FontSizeSlider extends StatefulWidget {
+class _FontSize extends StatefulWidget {
   final double value;
   final ValueChanged<double> onEnd;
-  const _FontSizeSlider({required this.value, required this.onEnd});
+  const _FontSize({required this.value, required this.onEnd});
 
   @override
-  State<_FontSizeSlider> createState() => _FontSizeSliderState();
+  State<_FontSize> createState() => _FontSizeState();
 }
 
-class _FontSizeSliderState extends State<_FontSizeSlider> {
+class _FontSizeState extends State<_FontSize> {
   late double _v = widget.value;
 
   @override
-  Widget build(BuildContext context) => Column(children: [
-        Row(children: [
-          const Expanded(child: Text('Font size')),
-          Text(_v.toStringAsFixed(2)),
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+        child: Row(children: [
+          const Text('A', style: TextStyle(fontSize: 13)),
+          Expanded(
+            child: CupertinoSlider(
+              value: _v,
+              min: 0.85,
+              max: 1.4,
+              divisions: 11,
+              onChanged: (x) => setState(() => _v = x),
+              onChangeEnd: widget.onEnd,
+            ),
+          ),
+          const Text('A', style: TextStyle(fontSize: 22)),
         ]),
-        Slider(
-          value: _v,
-          min: 0.85,
-          max: 1.4,
-          divisions: 11,
-          onChanged: (x) => setState(() => _v = x),
-          onChangeEnd: widget.onEnd,
-        ),
-      ]);
+      );
 }

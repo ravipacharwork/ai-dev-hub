@@ -3,6 +3,7 @@ import 'dart:async';
 import '../build_poller.dart';
 import '../deliverables.dart';
 import '../github_service.dart';
+import 'plan.dart';
 
 /// Shown to the user before an action that leaves the device.
 class ApprovalRequest {
@@ -13,15 +14,45 @@ class ApprovalRequest {
 class ToolResult {
   final String content;
   final bool ok;
-  final Stream<BuildStatus>? build; // set by trigger_build
+  final Stream<BuildStatus>? build; // set by trigger_build / commit_changes
   final List<Deliverable> deliverables; // files handed to the user in chat
+  final PlanSnapshot? plan; // set by update_plan
+  final String? checkpoint; // undo point taken before this step
+  /// For slow tools: the runner shows [build]/[deliverables] first, then awaits
+  /// this and uses ITS result as the tool output (e.g. wait for the CI result).
+  final Future<ToolResult> Function()? settle;
   const ToolResult(this.content,
-      {this.ok = true, this.build, this.deliverables = const []});
+      {this.ok = true,
+      this.build,
+      this.deliverables = const [],
+      this.plan,
+      this.checkpoint,
+      this.settle});
+
+  ToolResult withCheckpoint(String id) => ToolResult(content,
+      ok: ok,
+      build: build,
+      deliverables: deliverables,
+      plan: plan,
+      checkpoint: id,
+      settle: settle);
+}
+
+/// A restore point: taken before every step that changes the repo.
+class Checkpoint {
+  final String id, label;
+  final DateTime at;
+  final Map<String, String?> staged; // copy of the staged changes
+  final String? headSha; // branch head when taken
+  Checkpoint(this.id, this.label, this.at, this.staged, this.headSha);
 }
 
 /// The repo the agent works on, plus changes staged on the device.
 /// Staged changes live in memory: they are lost if the app is killed.
 class AgentWorkspace {
+  static const maxFixAttempts = 3;
+  static const _memoryCap = 8000;
+
   final GitHubService gh;
   final RepoRef repo;
   final String branch, workflowFile;
@@ -31,10 +62,95 @@ class AgentWorkspace {
   final Map<String, String?> staged = {};
   List<TreeEntry>? tree; // cached; cleared after a commit
 
+  /// Consecutive failed builds in the auto-fix loop (reset on success / new run).
+  int failedBuilds = 0;
+
+  // ---- undo -----------------------------------------------------------------
+  final List<Checkpoint> checkpoints = [];
+  String? headSha; // last head we know of (ours)
+  int _cpSeq = 0;
+
   AgentWorkspace(this.gh, this.repo, this.branch, this.workflowFile)
       : poller = BuildPoller(gh);
 
   String get slug => '${repo.owner}/${repo.repo}@$branch';
+
+  /// Current text of a file: staged version if any, else from GitHub.
+  /// Null when the file is staged for deletion.
+  Future<String?> currentText(String path) async {
+    if (staged.containsKey(path)) return staged[path];
+    return (await gh.readFile(repo, path, branch)).$1;
+  }
+
+  /// Called at the start of every agent run. Resets the fix-loop counter and
+  /// returns the project-memory block for the system prompt (AGENTS.md).
+  Future<String> beginRun() async {
+    failedBuilds = 0;
+    String? text;
+    try {
+      text = await currentText('AGENTS.md');
+    } on GitHubException catch (e) {
+      if (e.status != 404) return '';
+    } catch (_) {
+      return '';
+    }
+    if (text == null || text.trim().isEmpty) {
+      return 'PROJECT MEMORY: this repo has no AGENTS.md yet. After your first meaningful piece of work, create it with write_file: a short file with Overview, Stack, Build & test commands, Conventions and Gotchas. Later sessions read it automatically.';
+    }
+    final body = text.length > _memoryCap ? '${text.substring(0, _memoryCap)}\n[truncated]' : text;
+    return 'PROJECT MEMORY (AGENTS.md from the repo; follow it, it overrides your defaults; use the remember tool to add lasting lessons):\n$body';
+  }
+
+  Future<String> checkpoint(String label, {bool refreshHead = false}) async {
+    if (headSha == null || refreshHead) {
+      try {
+        headSha = await gh.branchSha(repo, branch);
+      } catch (_) {/* undo of commits is then unavailable for this point */}
+    }
+    final c = Checkpoint('cp${++_cpSeq}', label, DateTime.now(), Map.of(staged), headSha);
+    checkpoints.add(c);
+    if (checkpoints.length > 60) checkpoints.removeAt(0);
+    return c.id;
+  }
+
+  void dropCheckpoint(String id) => checkpoints.removeWhere((c) => c.id == id);
+
+  Checkpoint? checkpointById(String id) {
+    for (final c in checkpoints) {
+      if (c.id == id) return c;
+    }
+    return null;
+  }
+
+  /// True when going back to [id] also has to move the branch on GitHub.
+  bool undoTouchesRemote(String id) {
+    final c = checkpointById(id);
+    return c != null && c.headSha != null && headSha != null && c.headSha != headSha;
+  }
+
+  /// Restores the repo state from before checkpoint [id] (and everything after).
+  /// Returns a short message for the user.
+  Future<String> restore(String id) async {
+    final i = checkpoints.indexWhere((c) => c.id == id);
+    if (i < 0) return 'That restore point is no longer available.';
+    final c = checkpoints[i];
+    var msg = 'Went back to before: ${c.label}.';
+    if (c.headSha != null && headSha != null && c.headSha != headSha) {
+      final remote = await gh.branchSha(repo, branch);
+      if (remote != headSha) {
+        return 'Cannot undo: $branch changed outside this chat (someone else pushed). Nothing was changed.';
+      }
+      await gh.resetBranch(repo, branch, c.headSha!);
+      headSha = c.headSha;
+      tree = null;
+      msg = '$msg Branch moved back to ${c.headSha!.substring(0, 7)} on GitHub.';
+    }
+    staged
+      ..clear()
+      ..addAll(c.staged);
+    checkpoints.removeRange(i, checkpoints.length);
+    return msg;
+  }
 }
 
 /// What the agent loop needs from a set of tools.
@@ -76,7 +192,9 @@ class AgentToolkit implements Toolkit {
   static const _readCap = 12000;
 
   final AgentWorkspace ws;
-  AgentToolkit(this.ws);
+  final bool Function() autoVerify; // commit_changes also builds and waits
+  AgentToolkit(this.ws, {this.autoVerify = _yes});
+  static bool _yes() => true;
 
   // ---- schemas --------------------------------------------------------------
 
@@ -133,26 +251,45 @@ class AgentToolkit implements Toolkit {
         _fn('discard_changes', 'Drop all staged changes.', {}),
         _fn(
             'commit_changes',
-            'Commit and push all staged changes in one commit. The user must approve.',
-            {'message': _p('Commit message')},
+            'Commit and push all staged changes in one commit. The user must approve. By default it then builds on GitHub Actions and returns the build result (with the error log if it failed), so you can fix and commit again.',
+            {
+              'message': _p('Commit message'),
+              'verify': _p('Set false to skip the automatic build check', 'boolean'),
+            },
             ['message']),
         _fn(
             'trigger_build',
-            'Start the GitHub Actions build for the committed code. The user must approve.',
+            'Start the GitHub Actions build for the committed code and WAIT for the result (up to ~15 min). Returns success, or the failed step with the build log. The user must approve.',
             {}),
+        _fn(
+            'get_build_logs',
+            'Read the result and error log of the most recent finished build on this branch (for example after a push made from the terminal).',
+            {}),
+        _fn(
+            'remember',
+            'Stage a lasting note in AGENTS.md (project memory read at the start of every session): build commands, conventions, gotchas, decisions. One short line per call. Gets committed with the next commit.',
+            {'note': _p('One concise fact worth remembering')},
+            ['note']),
       ];
 
   String get systemNote => '''You can work on the user's GitHub repository ${ws.slug} with tools.
 - Explore with list_files and read_file before editing; read_file accepts start_line/end_line for large files.
 - Prefer replace_in_file for small edits (old_str must match exactly once). Use write_file for new files or full rewrites.
 - write_file, replace_in_file and delete_file only STAGE changes on the device. Nothing reaches GitHub until commit_changes, which the user must approve.
-- trigger_build builds the committed code on GitHub Actions, so commit first. The user must approve it too.
+- VERIFY LOOP: commit_changes (unless verify=false) builds on GitHub Actions and waits. If the result is BUILD FAILED, read the log, find the root cause, fix it with replace_in_file/write_file and call commit_changes again. Give up after ${AgentWorkspace.maxFixAttempts} failed attempts and explain the error to the user instead of guessing. After a push made from the terminal, use trigger_build or get_build_logs to check the result.
+- Every file change is saved as an undo point the user can restore with one tap.
 - If the user denies an action, do not retry it; ask what they want instead.
 - Be economical: do not re-read files you already have, and keep tool calls to what the task needs.''';
 
   String label(String name, Map<String, dynamic> a) {
     final path = a['path'];
-    return path is String ? '$name  $path' : name;
+    if (path is String) return '$name  $path';
+    final extra = name == 'commit_changes' ? a['message'] : (name == 'remember' ? a['note'] : null);
+    if (extra is String && extra.trim().isNotEmpty) {
+      final one = extra.replaceAll('\n', ' ').trim();
+      return '$name  ${one.length > 60 ? '${one.substring(0, 60)}...' : one}';
+    }
+    return name;
   }
 
   // ---- approval -------------------------------------------------------------
@@ -180,6 +317,9 @@ class AgentToolkit implements Toolkit {
           }
           if (lines.length > 6) b.writeln('  ...');
         }
+        if (autoVerify() && a['verify'] != false) {
+          b.writeln('\nThen the app builds on GitHub Actions and the agent fixes errors itself.');
+        }
         return ApprovalRequest(
             'Commit ${ws.staged.length} file(s) to ${ws.slug}?', b.toString());
       case 'trigger_build':
@@ -195,7 +335,32 @@ class AgentToolkit implements Toolkit {
 
   // ---- execution ------------------------------------------------------------
 
+  static const _mutating = {
+    'write_file',
+    'replace_in_file',
+    'delete_file',
+    'discard_changes',
+    'commit_changes',
+    'remember',
+  };
+
   Future<ToolResult> run(String name, Map<String, dynamic> a) async {
+    String? cp;
+    if (_mutating.contains(name)) {
+      try {
+        cp = await ws.checkpoint(label(name, a), refreshHead: name == 'commit_changes');
+      } catch (_) {}
+    }
+    final r = await _dispatch(name, a);
+    if (cp == null) return r;
+    if (!r.ok) {
+      ws.dropCheckpoint(cp);
+      return r;
+    }
+    return r.withCheckpoint(cp);
+  }
+
+  Future<ToolResult> _dispatch(String name, Map<String, dynamic> a) async {
     try {
       switch (name) {
         case 'list_files':
@@ -217,6 +382,10 @@ class AgentToolkit implements Toolkit {
           return await _commit(a);
         case 'trigger_build':
           return _build();
+        case 'get_build_logs':
+          return await _logs();
+        case 'remember':
+          return await _remember(a);
         default:
           return ToolResult('Unknown tool "$name".', ok: false);
       }
@@ -259,10 +428,7 @@ class AgentToolkit implements Toolkit {
 
   /// Current text of a file: staged version if any, else from GitHub.
   /// Returns null when the file is staged for deletion.
-  Future<String?> _current(String path) async {
-    if (ws.staged.containsKey(path)) return ws.staged[path];
-    return (await ws.gh.readFile(ws.repo, path, ws.branch)).$1;
-  }
+  Future<String?> _current(String path) => ws.currentText(path);
 
   Future<ToolResult> _list(String prefix) async {
     ws.tree ??= await ws.gh.getTree(ws.repo, ws.branch);
@@ -388,18 +554,86 @@ class AgentToolkit implements Toolkit {
     final n = ws.staged.length;
     ws.staged.clear();
     ws.tree = null;
-    return ToolResult('Committed $n file(s) to ${ws.slug} as ${sha.substring(0, 7)}.');
+    ws.headSha = sha;
+    final done = 'Committed $n file(s) to ${ws.slug} as ${sha.substring(0, 7)}.';
+    if (!autoVerify() || a['verify'] == false) return ToolResult(done);
+    return _startBuild(prefix: '$done\n');
   }
 
   ToolResult _build() {
-    final stream = ws.poller.run(ws.repo,
+    final n = ws.staged.length;
+    final warn = n > 0
+        ? 'Note: $n staged change(s) are NOT committed and are not in this build.\n'
+        : '';
+    return _startBuild(prefix: warn);
+  }
+
+  /// Dispatches the workflow, shows the live card, then waits for the result so
+  /// the model can read the log and fix the code (the auto-verify loop).
+  ToolResult _startBuild({String prefix = ''}) {
+    final tracker = BuildTracker.follow(ws.poller.run(ws.repo,
         workflowFile: ws.workflowFile,
         ref: ws.branch,
-        correlationId: BuildPoller.newCorrelationId());
-    final n = ws.staged.length;
-    final warn = n > 0 ? ' Note: $n staged change(s) are NOT committed and are not in this build.' : '';
+        correlationId: BuildPoller.newCorrelationId(),
+        timeout: const Duration(minutes: 15)));
     return ToolResult(
-        'Build dispatched for ${ws.slug} (workflow ${ws.workflowFile}). Progress and the install button appear in the chat; do not wait or poll.$warn',
-        build: stream);
+        '${prefix}Build dispatched for ${ws.slug} (workflow ${ws.workflowFile}).',
+        build: tracker.stream,
+        settle: () async => _afterBuild(await tracker.finished, prefix));
+  }
+
+  ToolResult _afterBuild(BuildStatus fin, String prefix) {
+    final b = StringBuffer(prefix)..writeln(fin.summaryForModel);
+    final ok = fin.phase == BuildPhase.succeeded;
+    if (ok) {
+      ws.failedBuilds = 0;
+    } else if (fin.phase == BuildPhase.failed) {
+      ws.failedBuilds++;
+      final left = AgentWorkspace.maxFixAttempts - ws.failedBuilds;
+      b.writeln(left > 0
+          ? '\nFix the root cause (read the files involved first), then commit_changes again. Attempt ${ws.failedBuilds} of ${AgentWorkspace.maxFixAttempts}.'
+          : '\nThis was failed build #${ws.failedBuilds}. STOP retrying: tell the user what fails and what you think the cause is.');
+    }
+    return ToolResult(b.toString().trimRight(), ok: ok);
+  }
+
+  Future<ToolResult> _logs() async {
+    final runs = await ws.gh.latestRuns(ws.repo, workflowFile: ws.workflowFile, branch: ws.branch);
+    Map<String, dynamic>? run;
+    for (final r in runs) {
+      if (r['status'] == 'completed') {
+        run = r;
+        break;
+      }
+    }
+    if (run == null) {
+      return const ToolResult('No finished build found for this branch yet. Use trigger_build.', ok: false);
+    }
+    final url = run['html_url'] as String?;
+    if (run['conclusion'] == 'success') {
+      return ToolResult('The latest build SUCCEEDED.${url == null ? '' : ' Run: $url'}');
+    }
+    final d = await ws.poller.failureDigest(ws.repo, run['id'] as int);
+    return ToolResult(
+        BuildStatus(BuildPhase.failed, runUrl: url, failedStep: d.step, failureLog: d.log)
+            .summaryForModel,
+        ok: false);
+  }
+
+  Future<ToolResult> _remember(Map<String, dynamic> a) async {
+    final note = (_s(a, 'note') ?? '').replaceAll('\n', ' ').trim();
+    if (note.isEmpty) return const ToolResult('Need a non-empty "note".', ok: false);
+    String? cur;
+    try {
+      cur = await ws.currentText('AGENTS.md');
+    } on GitHubException catch (e) {
+      if (e.status != 404) rethrow;
+    }
+    const head = '## Notes from the agent';
+    var text = cur ?? '# AGENTS.md\n\nProject memory for AI coding agents. Read at the start of every session.\n';
+    if (!text.contains(head)) text = '${text.trimRight()}\n\n$head\n';
+    text = '${text.trimRight()}\n- $note\n';
+    ws.staged['AGENTS.md'] = text;
+    return const ToolResult('Noted in AGENTS.md (staged; it is saved with the next commit).');
   }
 }
