@@ -228,9 +228,11 @@ class AppServices {
       ..github = (() => a.gh)
       ..storageAllowed = (() => a.settings.terminalStorage);
     a.deviceFiles = DeviceFileToolkit('${docs.path}/fs_trash');
-    a.localUndo = LocalUndoLog('${docs.path}/undo_store')
-      ..stopJobs = () async => a.terminalBridge.jobs.killAll()
-      ..undoPush = a._undoPush;
+    a.localUndo = LocalUndoLog('${docs.path}/undo_store');
+    a.localUndo.stopJobs = () async {
+      a.terminalBridge.jobs.killAll();
+    };
+    a.localUndo.undoPush = a._undoPush;
     await a.localUndo.init();
     // A `git push` made by the shell is remembered so Undo can move the branch back.
     a.terminalBridge.onPush = (owner, repo, branch, before, after) {
